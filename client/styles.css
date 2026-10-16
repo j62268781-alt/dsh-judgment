@@ -11,6 +11,7 @@
 .jdg-pageIntro{color:var(--dsw-alias-label-secondary);margin:4px 0 0;font-size:13px;line-height:20px}
 .jdg-toolbar{justify-content:flex-end;align-items:center;gap:8px;display:flex;flex:none}
 .jdg-inlineRow{display:flex;align-items:center;gap:10px}
+.jdg-inlineRow .jdg-label{flex:none;white-space:nowrap}
 .jdg-inlineRow .jdg-select{flex:1 1 auto;min-width:0}
 
 .jdg-group{flex-direction:column;gap:10px;display:flex;border-top:.5px solid var(--dsw-alias-border-l2);padding-top:14px}

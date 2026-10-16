@@ -52,7 +52,8 @@
     "build:client": "node client/esbuild.config.mjs",
     "test": "pnpm build && node --test tests/",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.contract.json",
-    "verify:contract": "node scripts/verify-contract.mjs"
+    "verify:contract": "node scripts/verify-contract.mjs",
+    "verify:served": "node scripts/verify-served.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4",
