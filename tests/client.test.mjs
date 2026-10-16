@@ -57,7 +57,7 @@ test('apply 注册 settings.section，并把配置表单交给页面', async () 
     },
   }
 
-  module.apply(ctx)
+  await module.apply(ctx)
 
   assert.equal(registered.length, 1)
   const { registration, Component } = registered[0]
@@ -86,7 +86,7 @@ test('entry 名对不上时退回包名，页面仍能渲染（只是不可写�
     },
   }
 
-  module.apply(ctx)
+  await module.apply(ctx)
   assert.equal(registered.length, 1)
   assert.equal(registered[0].registration.inject().entryId, 'dsh-judgment')
 })

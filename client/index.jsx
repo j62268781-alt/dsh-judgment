@@ -7,6 +7,7 @@
  */
 import './react.js'
 import { findForm } from './config.js'
+import { primitives } from './primitives.js'
 import { Panel } from './panel.jsx'
 
 /** 浏览器侧需要的服务：槽位 + 配置表单 + 凭据读写面（remote.credentials）。 */
@@ -27,6 +28,7 @@ export function apply(ctx) {
     id: 'judgment',
     order: 21,
     label: () => '决策',
-    inject: () => ({ form, entryId, credentials }),
+    // primitives 见 client/primitives.js：走宿主模块表的同步 require。
+    inject: () => ({ form, entryId, credentials, primitives }),
   }, Panel))
 }

@@ -122,10 +122,10 @@ test('dictOf 只认字典', () => {
 
 test('connectionDraft 从条目还原；密钥框永远是空的（不回显）', () => {
   assert.deepEqual(connectionDraft('main', { protocol: 'openai-decisions', baseUrl: 'u', model: 'm', credentialRef: 'K', timeoutMs: 5 }), {
-    name: 'main', protocol: 'openai-decisions', baseUrl: 'u', model: 'm', timeoutMs: 5, key: '', clearKey: false,
+    name: 'main', protocol: 'openai-decisions', baseUrl: 'u', model: 'm', timeoutMs: 5, key: '',
   })
   assert.deepEqual(connectionDraft('main', undefined), {
-    name: 'main', protocol: 'system-one', baseUrl: '', model: '', timeoutMs: 10000, key: '', clearKey: false,
+    name: 'main', protocol: 'system-one', baseUrl: '', model: '', timeoutMs: 10000, key: '',
   })
 })
 
@@ -134,7 +134,7 @@ test('blankConnection 不含 credentialRef（否则每条连接共用同一个�
   assert.equal('credentialRef' in draft, false)
   assert.deepEqual(draft, {
     name: '', protocol: 'system-one', baseUrl: GOOD.baseUrl, model: GOOD.model, timeoutMs: GOOD.timeoutMs,
-    key: '', clearKey: false,
+    key: '',
   })
 })
 

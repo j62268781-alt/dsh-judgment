@@ -12,24 +12,27 @@ import { build } from 'esbuild'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-const BUNDLE = 'node_modules/.cache/jdg-panel.test.mjs'
-
-async function loadPanel() {
+async function loadModule(entry) {
   const result = await build({
-    entryPoints: ['client/panel.jsx'],
+    entryPoints: [entry],
     bundle: true,
     format: 'esm',
     platform: 'node',
     target: 'es2022',
-    external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+    external: ['react', 'react/*', 'react-dom', 'react-dom/*', '@deepseek-ai/*'],
     jsx: 'automatic',
     loader: { '.jsx': 'jsx', '.js': 'jsx', '.css': 'text' },
     write: false,
     logLevel: 'silent',
   })
+  const out = `node_modules/.cache/${entry.replace(/[^a-zA-Z0-9]/g, '_')}.mjs`
   await mkdir('node_modules/.cache', { recursive: true })
-  await writeFile(BUNDLE, result.outputFiles[0].text)
-  return import(`../${BUNDLE}?case=${Math.random()}`)
+  await writeFile(out, result.outputFiles[0].text)
+  return import(`../${out}?case=${Math.random()}`)
+}
+
+function loadPanel() {
+  return loadModule('client/panel.jsx')
 }
 
 function fakeForm(value) {
@@ -164,4 +167,62 @@ test('样式随页面注入，且类名不与他插件共用', async () => {
   assert.match(html, /\.jdg-card\{/)
   assert.match(html, /\.jdg-tab\[data-active=true\]/)
   assert.doesNotMatch(html, /\.smp-/, '不能复用 skills-mcp 面板的类名')
+})
+
+/* ─────────────────── 删除确认：交给 DSH 自带的 Modal ─────────────────── */
+
+test('删除确认把标题/关闭/两个按钮交给宿主 Modal（与内置页面同一个弹窗）', async () => {
+  const { ConfirmDialog } = await loadModule('client/dialog.jsx')
+  const seen = []
+  function StubModal(props) {
+    seen.push(props)
+    return React.createElement('div', { className: 'modal' }, props.title, props.description, props.footer)
+  }
+  function StubButton(props) {
+    return React.createElement('button', { type: 'button', disabled: props.disabled === true }, props.children)
+  }
+
+  const html = renderToStaticMarkup(ConfirmDialog({
+    dialog: { kind: 'connection', label: 'probe-main', note: '它的密钥（JUDGMENT_API_KEY_1）会一并清除。' },
+    primitives: { Modal: StubModal, Button: StubButton },
+    onCancel: () => {},
+    onConfirm: () => {},
+  }))
+
+  assert.equal(seen.length, 1, '必须渲染一次宿主 Modal')
+  const props = seen[0]
+  assert.equal(props.open, true)
+  assert.equal(props.title, '删除连接「probe-main」？')
+  assert.equal(props.closeLabel, '关闭')
+  assert.equal(typeof props.onClose, 'function')
+  assert.match(html, /它的密钥（JUDGMENT_API_KEY_1）会一并清除/)
+  assert.match(html, /取消/)
+  assert.match(html, /删除/)
+})
+
+test('删除确认：失败原因与进行中状态都留在弹窗里，不静默关掉', async () => {
+  const { ConfirmDialog } = await loadModule('client/dialog.jsx')
+  function StubModal(props) { return React.createElement('div', null, props.description, props.footer) }
+
+  const html = renderToStaticMarkup(ConfirmDialog({
+    dialog: { kind: 'purpose', label: 'mobile.action', note: '删除后消费者再报这个名字会直接报错。' },
+    primitives: { Modal: StubModal },
+    onCancel: () => {},
+    onConfirm: () => {},
+    pending: true,
+    error: '密钥未清除，已取消删除：被环境变量遮住',
+  }))
+
+  assert.match(html, /正在删除并刷新配置…/)
+  assert.match(html, /密钥未清除，已取消删除/)
+  assert.match(html, /删除中…/)
+})
+
+test('拿不到官方 Modal 时不渲染弹窗（调用方退回原生 confirm）', async () => {
+  const { ConfirmDialog } = await loadModule('client/dialog.jsx')
+  const dialog = { kind: 'connection', label: 'x', note: 'n' }
+  const noop = () => {}
+  assert.equal(ConfirmDialog({ dialog, primitives: null, onCancel: noop, onConfirm: noop }), null)
+  assert.equal(ConfirmDialog({ dialog, primitives: {}, onCancel: noop, onConfirm: noop }), null)
+  assert.equal(ConfirmDialog({ dialog: null, primitives: { Modal: () => null }, onCancel: noop, onConfirm: noop }), null)
 })

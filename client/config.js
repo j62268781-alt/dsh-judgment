@@ -98,8 +98,6 @@ export function blankConnection() {
     timeoutMs: 10000,
     /** 密码框里的密钥值：只在这次编辑里存在，写进凭据服务后立刻丢弃。 */
     key: '',
-    /** 用户在编辑里点了「清除密钥」。 */
-    clearKey: false,
   }
 }
 
@@ -111,7 +109,6 @@ export function connectionDraft(name, entry) {
     model: entry?.model ?? '',
     timeoutMs: entry?.timeoutMs ?? 10000,
     key: '',
-    clearKey: false,
   }
 }
 

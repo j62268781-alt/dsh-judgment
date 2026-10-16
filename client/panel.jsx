@@ -14,6 +14,7 @@ import {
   validateConnection, validateKey, validatePurpose, withoutKey,
 } from './config.js'
 import { Chevron, Field, MoreMenu, SearchIcon, Status, Tag } from './components.jsx'
+import { ConfirmDialog } from './dialog.jsx'
 import CSS from './styles.css'
 
 const EMPTY = {}
@@ -35,6 +36,10 @@ export function Panel(props) {
   const [tab, setTab] = useState(props.initialTab === 'purposes' ? 'purposes' : 'connections')
   /** 每个凭据引用名的状态（`describe` 的结果）：只读，永不回显密钥值。 */
   const [keyStates, setKeyStates] = useState({})
+  /** 删除确认弹窗（用 DSH 自带的 Modal；拿不到时退回原生 confirm）。 */
+  const [confirm, setConfirm] = useState(null)
+  const [confirmPending, setConfirmPending] = useState(false)
+  const [confirmError, setConfirmError] = useState('')
 
   // 宿主的设置镜像变了就重画（别的编辑器/别的窗口写回也会走到这里）。
   useEffect(() => {
@@ -170,16 +175,14 @@ export function Panel(props) {
     const entry = connectionValue(draft, resolveCredentialRef(previousRef, otherRefs))
     // 配置先落盘、再写密钥——与模型页的两段式一致（配置没写成就别动凭据）。
     if (!(await commit('connections', { ...connections, [name]: entry }))) return
-    if (credentials === undefined || (key === '' && draft.clearKey !== true)) {
+    if (credentials === undefined || key === '') {
       closeEditor()
       return
     }
     setBusy(true)
     setError('')
     try {
-      const response = key !== ''
-        ? await credentials.set(entry.credentialRef, key)
-        : await credentials.unset(entry.credentialRef)
+      const response = await credentials.set(entry.credentialRef, key)
       if (response?.ok !== true) {
         setError(`密钥未写入：${response?.error?.message ?? '未知原因'}`)
         return
@@ -208,45 +211,71 @@ export function Panel(props) {
     if (await commit('purposes', { ...purposes, [name]: { connection: String(draft.connection ?? '') } })) closeEditor()
   }
 
-  async function removeConnection(id) {
-    const affected = purposesUsing(purposes, id, defaultConnection)
-    const ref = String(connections[id]?.credentialRef ?? '')
-    const note = [
-      affected.length === 0 ? '' : `\n\n有 ${affected.length} 处指向它（${affected.join('、')}），删除后那些用途会失效。`,
-      ref === '' ? '' : `\n\n同时会清除它的密钥（${ref}）——序号会被回收，留着会让下一条连接读到这把遗留的 key。`,
-    ].join('')
-    if (typeof window !== 'undefined' && !window.confirm(`删除连接「${id}」？${note}`)) return
-    setError('')
-    // 顺序：先清密钥、再删配置。密钥没清掉就中止删除——留下会被新连接"继承"的孤儿凭据，
-    // 比"删失败需要重试"危险得多。
-    // 例外：密钥由环境变量提供（只读）时**没有我们存的东西**可清，unset 也会被拒，
-    // 所以跳过它，不要因此挡住删除。
-    if (credentials !== undefined && shouldClearCredential(ref, keyStates[ref])) {
-      setBusy(true)
-      try {
-        const response = await credentials.unset(ref)
-        if (response?.ok !== true) {
-          setError(`密钥未清除，已取消删除：${response?.error?.message ?? '未知原因'}`)
-          return
-        }
-      } catch (cause) {
-        setError(`密钥未清除，已取消删除：${String(cause?.message ?? cause)}`)
-        return
-      } finally {
-        setBusy(false)
-      }
+  /**
+   * 打开删除确认：优先用 DSH 自带的 Modal（与内置页面、skills-mcp 面板同一个弹窗），
+   * 拿不到 primitives 时退回原生 confirm —— 没有官方组件也不该让删除不可用。
+   */
+  function askRemove(kind, label, note, run) {
+    if (props.primitives?.Modal === undefined) {
+      const verb = kind === 'connection' ? '连接' : '用途'
+      if (typeof window !== 'undefined' && !window.confirm(`删除${verb}「${label}」？\n\n${note}`)) return
+      void run().catch((cause) => setError(String(cause?.message ?? cause)))
+      return
     }
-    const clearingDefault = defaultConnection === id
-    if (await commit('connections', withoutKey(connections, id))) {
-      if (clearingDefault) await commit('defaultConnection', '')
-      closeEditor()
+    setConfirmError('')
+    setConfirm({ kind, label, note, run })
+  }
+
+  async function confirmRemove() {
+    if (confirm === null) return
+    setConfirmPending(true)
+    setConfirmError('')
+    try {
+      await confirm.run()
+      setConfirm(null)
+    } catch (cause) {
+      // 失败就让弹窗留着并说明原因，别把它关掉让人以为删成功了。
+      setConfirmError(String(cause?.message ?? cause))
+    } finally {
+      setConfirmPending(false)
     }
   }
 
-  async function removePurpose(name) {
-    if (typeof window !== 'undefined' && !window.confirm(`删除用途「${name}」？`)) return
-    setError('')
-    if (await commit('purposes', withoutKey(purposes, name))) closeEditor()
+  /**
+   * 删除连接：**先清密钥、再删配置**。序号会被回收，孤儿凭据会让下一条连接读到上一把
+   * 遗留的 key，所以密钥没清掉就中止删除（比"删除失败要重试"危险得多）。
+   * 例外：密钥由环境变量提供（只读）时没有我们存的东西可清，跳过它、不要挡住删除。
+   */
+  async function deleteConnection(id, ref) {
+    if (credentials !== undefined && shouldClearCredential(ref, keyStates[ref])) {
+      const response = await credentials.unset(ref)
+      if (response?.ok !== true) throw new Error(`密钥未清除，已取消删除：${response?.error?.message ?? '未知原因'}`)
+    }
+    const clearingDefault = defaultConnection === id
+    if (!(await commit('connections', withoutKey(connections, id)))) throw new Error('配置未写入')
+    if (clearingDefault) await commit('defaultConnection', '')
+    closeEditor()
+  }
+
+  async function deletePurpose(name) {
+    if (!(await commit('purposes', withoutKey(purposes, name)))) throw new Error('配置未写入')
+    closeEditor()
+  }
+
+  function removeConnection(id) {
+    const affected = purposesUsing(purposes, id, defaultConnection)
+    const ref = String(connections[id]?.credentialRef ?? '')
+    const note = [
+      affected.length === 0 ? '' : `有 ${affected.length} 处指向它（${affected.join('、')}），删除后那些用途会失效。`,
+      ref === ''
+        ? '这个连接还没有密钥。'
+        : `它的密钥（${ref}）会一并清除——序号会被回收，留着会让下一条连接读到这把遗留的 key。`,
+    ].join(' ')
+    askRemove('connection', id, note, () => deleteConnection(id, ref))
+  }
+
+  function removePurpose(name) {
+    askRemove('purpose', name, '删除后，消费者再报这个用途名会直接报错（不会静默换连接）。', () => deletePurpose(name))
   }
 
   function toggle(key) {
@@ -367,7 +396,7 @@ export function Panel(props) {
               value={draft.key ?? ''}
               placeholder={draftKeyField.placeholder}
               disabled={busy || draftKeyField.locked}
-              onChange={(event) => setDraft({ ...draft, key: event.target.value, clearKey: false })}
+              onChange={(event) => setDraft({ ...draft, key: event.target.value })}
             />
           </Field>
           <Field label="超时（ms）">
@@ -384,24 +413,14 @@ export function Panel(props) {
         </div>
         <p className="jdg-note">
           {`密钥写进 DSH 凭据服务（引用名 ${draftRef}，自动分配），不写进配置、保存后不回显。`}
+          {` 留空即保持原值；要移除密钥请删除这条连接（删除会一并清除它）。`}
           {` 也可以不在这里填：在启动环境里设 ${draftRef}=… （或写进 ~/.dsh/.env）即可，启动环境优先级最高，那时这里会显示为只读。`}
-          {draft.clearKey ? ' 保存后会清除这个凭据。' : ''}
         </p>
         <div className="jdg-actionsRow">
           <button className="jdg-button" data-variant="primary" disabled={busy} onClick={() => { void saveConnection() }}>
             {busy ? '保存中…' : '保存'}
           </button>
           <button className="jdg-button" data-variant="outline" disabled={busy} onClick={closeEditor}>取消</button>
-          {draftKeyField.locked === false && draftKeyState?.configured === true ? (
-            <button
-              className="jdg-button"
-              data-variant="outline"
-              disabled={busy}
-              onClick={() => setDraft({ ...draft, key: '', clearKey: true })}
-            >
-              清除密钥
-            </button>
-          ) : null}
         </div>
       </li>
     )
@@ -601,6 +620,16 @@ export function Panel(props) {
           ? <li className="jdg-empty">{query === '' ? active.empty : '没有匹配的条目。'}</li>
           : active.cards}
       </ul>
+
+      {/* 删除确认用 DSH 自带的 Modal（与内置页面同一个弹窗）；拿不到时走原生 confirm。 */}
+      <ConfirmDialog
+        dialog={confirm}
+        primitives={props.primitives}
+        pending={confirmPending}
+        error={confirmError}
+        onCancel={() => { setConfirm(null); setConfirmError('') }}
+        onConfirm={() => { void confirmRemove() }}
+      />
     </div>
   )
 }
