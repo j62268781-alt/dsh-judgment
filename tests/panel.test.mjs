@@ -123,9 +123,10 @@ test('密钥字段是密码框：不回显、关闭自动填充、显示派生�
   assert.match(html, /autocomplete="new-password"/i)
   // 值永远是空的：密钥不进页面状态、也不回显
   assert.match(html, /type="password"[^>]*value=""/i)
-  // 凭据名不是用户手填的，而是按连接名派生并显示出来
-  assert.match(html, /凭据名/)
-  assert.match(html, /按连接名自动派生/)
+  // 凭据名不是用户手填的，而是自动分配并显示出来（也可以用同名环境变量提供）
+  assert.match(html, /凭据名 JUDGMENT_API_KEY_1/)
+  assert.match(html, /自动分配/)
+  assert.match(html, /环境变量/)
   // 宿主没有凭据面：锁住并说明
   assert.match(html, /宿主未提供凭据面/)
   assert.match(html, /无法在这里写入密钥/)

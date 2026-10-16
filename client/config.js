@@ -58,10 +58,36 @@ export const PROTOCOLS = [
 ]
 
 /**
+ * 凭据引用名：`JUDGMENT_API_KEY_1`、`JUDGMENT_API_KEY_2`…（全大写 + 序号）。
+ *
+ * 序号**取最小的空号**：删掉 #1 之后新建的连接会重新拿到 #1，编号保持紧凑、可预测。
+ * 代价是"号会被复用"，所以删除连接时必须一并 unset 它的密钥（见 panel 的删除流程），
+ * 否则新连接会读到上一把遗留的 key。
+ */
+export const CREDENTIAL_PREFIX = 'JUDGMENT_API_KEY_'
+
+/** 下一个可用引用名：跳过已被占用的号。 */
+export function nextCredentialRef(usedRefs = []) {
+  const used = new Set(usedRefs.map((ref) => String(ref ?? '')))
+  let index = 1
+  while (used.has(`${CREDENTIAL_PREFIX}${index}`)) index += 1
+  return `${CREDENTIAL_PREFIX}${index}`
+}
+
+/**
+ * 这条连接最终用哪个引用名：已存在的**保持不变**（改名/编辑不弄丢已存的密钥），
+ * 新建的分配一个空号。
+ */
+export function resolveCredentialRef(previousRef, usedRefs = []) {
+  const existing = String(previousRef ?? '').trim()
+  return existing !== '' ? existing : nextCredentialRef(usedRefs)
+}
+
+/**
  * 一条新连接的初值。
  *
- * `credentialRef` **故意不在这里**：写死一个默认引用名会让每条连接都指向同一个凭据、
- * 互相覆盖。引用名按连接名派生（见 {@link credentialRefFor}），密钥值走凭据服务。
+ * `credentialRef` **故意不在这里**：引用名由 {@link nextCredentialRef} 分配，
+ * 密钥值走凭据服务，两者都不该出现在草稿的默认值里。
  */
 export function blankConnection() {
   return {
@@ -75,19 +101,6 @@ export function blankConnection() {
     /** 用户在编辑里点了「清除密钥」。 */
     clearKey: false,
   }
-}
-
-/**
- * 连接名 → 凭据引用名（`typesafe-main` → `TYPESAFE_MAIN_API_KEY`）。
- *
- * 这是撞车 bug 的修法：引用名必须**随连接唯一**，否则第二条连接会把第一条的密钥覆盖掉。
- * 与模型页 `<ROUTE>_API_KEY` 的派生同一套做法（那里也是"页面从不问环境变量名"）。
- */
-export function credentialRefFor(connectionId) {
-  const slug = String(connectionId ?? '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-  if (slug === '') return ''
-  // 纯数字开头不是合法标识符，加一个前缀把它变成合法的引用名。
-  return `${/^[A-Za-z]/.test(slug) ? slug : `JUDGMENT_${slug}`}_API_KEY`
 }
 
 export function connectionDraft(name, entry) {
@@ -123,11 +136,10 @@ export function validateConnection(draft) {
   if (!NAME_PATTERN.test(name)) {
     return '连接名只能用字母、数字和 . - _，且不超过 64 个字符'
   }
-  // 引用名从连接名派生，所以连接名必须能派生出合法的引用名（空也是不合法）。
-  // 注意：CREDENTIAL_REF_PATTERN 允许空串（手写配置里"还没配密钥"是合法状态），
-  // 所以这里用非空的那条判据。
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(credentialRefFor(name))) {
-    return '连接名里至少要有一个字母或数字（凭据引用名由连接名派生）'
+  // 连接名是配置字典的键、也是消费者唯一要记的名字：至少要有一个字母或数字，
+  // 免得出现 `---` / `..` 这种只有符号的键。
+  if (!/[A-Za-z0-9]/.test(name)) {
+    return '连接名里至少要有一个字母或数字'
   }
   if (!BASE_URL_PATTERN.test(String(draft.baseUrl ?? '').trim())) {
     return '地址必须是 http(s) 且不含凭据、查询串或 # 片段（留空表示尚未配置）'
@@ -150,15 +162,13 @@ export function validatePurpose(draft) {
   return null
 }
 
-/** 写进配置的连接值（只保留 schema 认得的字段）。密钥值永远不进配置。 */
-export function connectionValue(draft, connectionId, previousRef) {
-  const existing = String(previousRef ?? '').trim()
+/** 写进配置的连接值（只保留 schema 认得的字段）。引用名由调用方决定；密钥值永远不进配置。 */
+export function connectionValue(draft, credentialRef) {
   return {
     protocol: draft.protocol,
     baseUrl: String(draft.baseUrl ?? '').trim(),
     model: String(draft.model ?? '').trim(),
-    // 已存在的引用名保持不变（改名不该把已存的密钥弄丢）；新建或原本为空时按连接名派生。
-    credentialRef: existing !== '' ? existing : credentialRefFor(connectionId),
+    credentialRef: String(credentialRef ?? '').trim(),
     timeoutMs: Number(draft.timeoutMs),
   }
 }
@@ -184,6 +194,16 @@ export function matchesQuery(needles, query) {
   const needle = String(query ?? '').trim().toLowerCase()
   if (needle === '') return true
   return needles.some((value) => String(value ?? '').toLowerCase().includes(needle))
+}
+
+/**
+ * 删除连接时要不要尝试清除凭据。
+ *
+ * 引用名为空 → 没有凭据可清；`writable === false` → 密钥由启动环境提供，
+ * **没有我们存的东西**可清且 `unset` 会被拒，所以跳过它，别因此挡住删除。
+ */
+export function shouldClearCredential(ref, keyState) {
+  return String(ref ?? '') !== '' && keyState?.writable !== false
 }
 
 /**

@@ -9,9 +9,9 @@ import './react.js'
 import { useEffect, useState } from 'react'
 import {
   PROTOCOLS, blankConnection, blankPurpose, connectionDraft, connectionStatus, connectionValue,
-  credentialRefFor, describeConnection, dictOf, keyFieldState, matchesQuery, purposeStatus,
-  purposeTargetLabel, purposesUsing, snapshotOf, statusOf, validateConnection, validateKey,
-  validatePurpose, withoutKey,
+  describeConnection, dictOf, keyFieldState, matchesQuery, purposeStatus,
+  purposeTargetLabel, purposesUsing, resolveCredentialRef, shouldClearCredential, snapshotOf, statusOf,
+  validateConnection, validateKey, validatePurpose, withoutKey,
 } from './config.js'
 import { Chevron, Field, MoreMenu, SearchIcon, Status, Tag } from './components.jsx'
 import CSS from './styles.css'
@@ -87,9 +87,14 @@ export function Panel(props) {
     }
   }
 
-  /** 正在编辑的这条连接最终用哪个引用名：已存在的不变，新建的按连接名派生。 */
+  /** 除"正在编辑的这一条"之外已被占用的引用名——分配空号时要避开它们。 */
+  const excludeId = editor?.isNew === true ? undefined : editor?.id
+  const otherRefs = Object.entries(connections)
+    .filter(([id]) => id !== excludeId)
+    .map(([, entry]) => String(entry?.credentialRef ?? ''))
+  /** 正在编辑的这条连接最终用哪个引用名：已存在的不变，新建的分配一个空号。 */
   const draftPreviousRef = editor?.isNew === true ? '' : String(connections[editor?.id]?.credentialRef ?? '')
-  const draftRef = draftPreviousRef !== '' ? draftPreviousRef : credentialRefFor(String(draft.name ?? '').trim())
+  const draftRef = resolveCredentialRef(draftPreviousRef, otherRefs)
   const draftKeyState = credentials === undefined
     ? null
     : keyRefs.includes(draftRef) ? keyStates[draftRef] : { configured: false }
@@ -162,7 +167,7 @@ export function Panel(props) {
       return
     }
     const previousRef = editor?.isNew === true ? '' : String(connections[name]?.credentialRef ?? '')
-    const entry = connectionValue(draft, name, previousRef)
+    const entry = connectionValue(draft, resolveCredentialRef(previousRef, otherRefs))
     // 配置先落盘、再写密钥——与模型页的两段式一致（配置没写成就别动凭据）。
     if (!(await commit('connections', { ...connections, [name]: entry }))) return
     if (credentials === undefined || (key === '' && draft.clearKey !== true)) {
@@ -205,9 +210,32 @@ export function Panel(props) {
 
   async function removeConnection(id) {
     const affected = purposesUsing(purposes, id, defaultConnection)
-    const note = affected.length === 0 ? '' : `\n\n有 ${affected.length} 处指向它（${affected.join('、')}），删除后那些用途会失效。`
+    const ref = String(connections[id]?.credentialRef ?? '')
+    const note = [
+      affected.length === 0 ? '' : `\n\n有 ${affected.length} 处指向它（${affected.join('、')}），删除后那些用途会失效。`,
+      ref === '' ? '' : `\n\n同时会清除它的密钥（${ref}）——序号会被回收，留着会让下一条连接读到这把遗留的 key。`,
+    ].join('')
     if (typeof window !== 'undefined' && !window.confirm(`删除连接「${id}」？${note}`)) return
     setError('')
+    // 顺序：先清密钥、再删配置。密钥没清掉就中止删除——留下会被新连接"继承"的孤儿凭据，
+    // 比"删失败需要重试"危险得多。
+    // 例外：密钥由环境变量提供（只读）时**没有我们存的东西**可清，unset 也会被拒，
+    // 所以跳过它，不要因此挡住删除。
+    if (credentials !== undefined && shouldClearCredential(ref, keyStates[ref])) {
+      setBusy(true)
+      try {
+        const response = await credentials.unset(ref)
+        if (response?.ok !== true) {
+          setError(`密钥未清除，已取消删除：${response?.error?.message ?? '未知原因'}`)
+          return
+        }
+      } catch (cause) {
+        setError(`密钥未清除，已取消删除：${String(cause?.message ?? cause)}`)
+        return
+      } finally {
+        setBusy(false)
+      }
+    }
     const clearingDefault = defaultConnection === id
     if (await commit('connections', withoutKey(connections, id))) {
       if (clearingDefault) await commit('defaultConnection', '')
@@ -331,7 +359,7 @@ export function Panel(props) {
               onChange={(event) => setDraft({ ...draft, model: event.target.value })}
             />
           </Field>
-          <Field label="密钥" wide hint={`${draftKeyField.hint} · 凭据名 ${draftRef || '（连接名里需要一个字母或数字）'}`}>
+          <Field label="密钥" wide hint={`${draftKeyField.hint} · 凭据名 ${draftRef}（也可以直接把它当环境变量名用，环境变量优先）`}>
             <input
               className="jdg-input"
               type="password"
@@ -355,7 +383,8 @@ export function Panel(props) {
           </Field>
         </div>
         <p className="jdg-note">
-          {`密钥写进 DSH 凭据服务（引用名 ${draftRef || '—'}，按连接名自动派生），不写进配置、保存后不回显。`}
+          {`密钥写进 DSH 凭据服务（引用名 ${draftRef}，自动分配），不写进配置、保存后不回显。`}
+          {` 也可以不在这里填：在启动环境里设 ${draftRef}=… （或写进 ~/.dsh/.env）即可，启动环境优先级最高，那时这里会显示为只读。`}
           {draft.clearKey ? ' 保存后会清除这个凭据。' : ''}
         </p>
         <div className="jdg-actionsRow">

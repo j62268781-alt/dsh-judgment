@@ -6,9 +6,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  blankConnection, connectionDraft, connectionStatus, connectionValue, credentialRefFor, dictOf,
-  findForm, keyFieldState, matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing,
-  validateConnection, validateKey, validatePurpose, withoutKey,
+  blankConnection, connectionDraft, connectionStatus, connectionValue, CREDENTIAL_PREFIX, dictOf,
+  findForm, keyFieldState, matchesQuery, nextCredentialRef, purposeStatus, purposeTargetLabel,
+  purposesUsing, resolveCredentialRef, shouldClearCredential, validateConnection, validateKey,
+  validatePurpose, withoutKey,
 } from '../client/config.js'
 
 const GOOD = {
@@ -55,26 +56,38 @@ test('用途名校验', () => {
 })
 
 test('connectionValue 去掉空白，并按 schema 的字段收口', () => {
-  assert.deepEqual(connectionValue({ ...GOOD, model: ' typesafe/jev-1.13 ', baseUrl: ' https://x/y ' }, 'typesafe-main', ''), {
+  assert.deepEqual(connectionValue({ ...GOOD, model: ' typesafe/jev-1.13 ', baseUrl: ' https://x/y ' }, 'JUDGMENT_API_KEY_3'), {
     protocol: 'system-one',
     baseUrl: 'https://x/y',
     model: 'typesafe/jev-1.13',
-    credentialRef: 'TYPESAFE_MAIN_API_KEY',
+    credentialRef: 'JUDGMENT_API_KEY_3',
     timeoutMs: 10000,
   })
 })
 
-test('凭据引用名按连接名派生：不同连接得到不同引用名（撞车 bug 的修法）', () => {
-  assert.equal(credentialRefFor('typesafe-main'), 'TYPESAFE_MAIN_API_KEY')
-  assert.equal(credentialRefFor('luna.openai'), 'LUNA_OPENAI_API_KEY')
-  assert.equal(credentialRefFor('  9x  '), 'JUDGMENT_9X_API_KEY', '数字开头要加前缀才合法')
-  assert.equal(credentialRefFor('---'), '')
-  assert.notEqual(credentialRefFor('typesafe-main'), credentialRefFor('luna-openai'))
+test('connectionValue 永远不含密钥值', () => {
+  const value = connectionValue({ ...GOOD, key: 'sk-secret-should-not-leak' }, 'JUDGMENT_API_KEY_1')
+  assert.equal('key' in value, false)
+  assert.equal(JSON.stringify(value).includes('sk-secret-should-not-leak'), false)
 })
 
-test('connectionValue 保留已存在的引用名（改名不弄丢已存的密钥）', () => {
-  const value = connectionValue(GOOD, 'renamed', 'OLD_REF_API_KEY')
-  assert.equal(value.credentialRef, 'OLD_REF_API_KEY')
+test('凭据引用名是 JUDGMENT_API_KEY_{序号}，全大写、取最小空号', () => {
+  assert.equal(CREDENTIAL_PREFIX, 'JUDGMENT_API_KEY_')
+  assert.equal(nextCredentialRef([]), 'JUDGMENT_API_KEY_1')
+  assert.equal(nextCredentialRef(['JUDGMENT_API_KEY_1']), 'JUDGMENT_API_KEY_2')
+  assert.equal(nextCredentialRef(['JUDGMENT_API_KEY_2']), 'JUDGMENT_API_KEY_1', '空号要回收，编号保持紧凑')
+  assert.equal(nextCredentialRef(['JUDGMENT_API_KEY_1', 'JUDGMENT_API_KEY_3']), 'JUDGMENT_API_KEY_2')
+  assert.equal(nextCredentialRef(['TYPESAFE_API_KEY']), 'JUDGMENT_API_KEY_1', '别的形状的引用名不占用号')
+  assert.match(nextCredentialRef([]), /^JUDGMENT_API_KEY_\d+$/)
+})
+
+test('resolveCredentialRef：已存在的不变，新建的拿空号（互不相同）', () => {
+  assert.equal(resolveCredentialRef('JUDGMENT_API_KEY_7', []), 'JUDGMENT_API_KEY_7')
+  assert.equal(resolveCredentialRef('', []), 'JUDGMENT_API_KEY_1')
+  assert.equal(resolveCredentialRef('  ', ['JUDGMENT_API_KEY_1']), 'JUDGMENT_API_KEY_2')
+  const first = resolveCredentialRef('', [])
+  const second = resolveCredentialRef('', [first])
+  assert.notEqual(first, second, '两条连接不能共用一个凭据')
 })
 
 test('密钥校验：非空 + 可打印 ASCII（照模型页的判据）', () => {
@@ -165,6 +178,14 @@ test('连接状态：缺哪一项说哪一项；密钥状态另算', () => {
   assert.equal(stored.tone, 'ok')
   assert.match(stored.text, /未自检/, '密钥已配置也不等于远端已验证')
   assert.equal(connectionStatus(GOOD, { configured: true, writable: false, source: 'env' }).text, '密钥由环境提供')
+})
+
+test('删连接时该不该清凭据：环境提供的（只读）跳过，别挡住删除', () => {
+  assert.equal(shouldClearCredential('JUDGMENT_API_KEY_1', { configured: true, writable: true }), true)
+  assert.equal(shouldClearCredential('JUDGMENT_API_KEY_1', { configured: false, writable: true }), true)
+  assert.equal(shouldClearCredential('JUDGMENT_API_KEY_1', undefined), true, '状态未知时仍尝试清理')
+  assert.equal(shouldClearCredential('JUDGMENT_API_KEY_1', { configured: true, writable: false }), false)
+  assert.equal(shouldClearCredential('', { configured: true, writable: true }), false)
 })
 
 test('密钥输入框：空与已配置是两句不同的话，环境只读时锁住', () => {
