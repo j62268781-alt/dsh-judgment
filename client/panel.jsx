@@ -31,11 +31,16 @@ export function Panel(props) {
   const [draft, setDraft] = useState(props.initialEditor === 'connection'
     ? blankConnection()
     : props.initialEditor === 'purpose' ? blankPurpose() : EMPTY)
-  const [expanded, setExpanded] = useState('')
+  // 首次渲染就展开某张卡片（测试用；也让将来做深链有落点）。
+  const [expanded, setExpanded] = useState(typeof props.initialExpanded === 'string' ? props.initialExpanded : '')
   const [query, setQuery] = useState('')
   const [tab, setTab] = useState(props.initialTab === 'purposes' ? 'purposes' : 'connections')
   /** 每个凭据引用名的状态（`describe` 的结果）：只读，永不回显密钥值。 */
   const [keyStates, setKeyStates] = useState({})
+  /** 本页跑过的自检结果（按连接 id）。 */
+  const [probes, setProbes] = useState({})
+  /** 宿主 `status()` 里的「已验证」记忆（按连接 id）——刷新页面后卡片也说得对。 */
+  const [verified, setVerified] = useState({})
   /** 删除确认弹窗（用 DSH 自带的 Modal；拿不到时退回原生 confirm）。 */
   const [confirm, setConfirm] = useState(null)
   const [confirmPending, setConfirmPending] = useState(false)
@@ -78,6 +83,35 @@ export function Panel(props) {
     })()
     return () => { alive = false }
   }, [credentials, keyRefsKey])
+
+  const connectionIdsKey = Object.keys(connections).join('|')
+
+  /**
+   * 拉一次宿主 `status()`：把"已验证"的历史记忆取回来。
+   *
+   * 为什么需要：`verified` 存在 host 内存里（`health()` 成功过就记下），页面刷新后本地状态
+   * 就没了；不拉这一下，卡片会在刷新后从「已验证」退回「未自检」——那是在对用户撒谎。
+   */
+  useEffect(() => {
+    if (props.judgment === undefined) return undefined
+    let alive = true
+    void (async () => {
+      try {
+        const envelope = await props.judgment.status()
+        if (!alive || envelope?.ok !== true) return
+        const next = {}
+        for (const entry of envelope.value?.connections ?? []) {
+          if (entry?.verified === true) {
+            next[entry.connection] = { ok: true, ...(typeof entry.verifiedAt === 'string' ? { at: entry.verifiedAt } : {}) }
+          }
+        }
+        setVerified(next)
+      } catch {
+        // 读不到就保持「未自检」——不猜一个"已验证"出来。
+      }
+    })()
+    return () => { alive = false }
+  }, [props.judgment, connectionIdsKey])
 
   /** 写完密钥后刷新单个引用名的状态。 */
   async function refreshKeys(ref) {
@@ -295,12 +329,56 @@ export function Panel(props) {
 
   /* ─────────────────── 连接 ─────────────────── */
 
+  /** 自检结论：本页刚跑的结果优先，其次用宿主 `status()` 里的历史记忆。 */
+  function verificationOf(id) {
+    const probed = probes[id]
+    if (probed === undefined) return verified[id]
+    if (probed.busy === true) return undefined
+    return probed
+  }
+
+  /**
+   * 跑一次自检：让 **host 半**发一次最小请求（`ctx.judgment.health()`）。
+   *
+   * 两条实测约束：Remote 返回的是**信封**（`{ok,value}` / `{ok,error}`，resolve 不 reject）；
+   * 实参个数必须与 host 形参个数相等（`health` 有一个可选参，所以这里显式给一个对象）。
+   * `signal` 不能过线（AbortSignal 不是 JSON），所以只传 connection。
+   */
+  async function runProbe(id) {
+    if (props.judgment === undefined) return
+    setProbes((current) => ({ ...current, [id]: { busy: true } }))
+    try {
+      const envelope = await props.judgment.health({ connection: id })
+      if (envelope?.ok === true) {
+        const value = envelope.value ?? {}
+        setProbes((current) => ({
+          ...current,
+          [id]: {
+            ok: true,
+            ...(typeof value.latencyMs === 'number' ? { latencyMs: value.latencyMs } : {}),
+            ...(typeof value.model === 'string' ? { model: value.model } : {}),
+            ...(typeof value.checkedAt === 'string' ? { at: value.checkedAt } : {}),
+          },
+        }))
+        return
+      }
+      const failure = envelope?.error
+      const detail = failure === undefined
+        ? '宿主返回了失败但没有原因'
+        : `${failure.code ?? 'error'} · ${failure.message ?? ''}`.trim()
+      setProbes((current) => ({ ...current, [id]: { ok: false, message: detail } }))
+    } catch (cause) {
+      setProbes((current) => ({ ...current, [id]: { ok: false, message: String(cause?.message ?? cause) } }))
+    }
+  }
+
   function connectionCard(id) {
     const entry = connections[id] ?? {}
     const key = `connection:${id}`
     const open = expanded === key
     const ref = String(entry.credentialRef ?? '')
-    const state = connectionStatus(entry, ref === '' ? null : keyStates[ref])
+    const probe = probes[id]
+    const state = connectionStatus(entry, ref === '' ? null : keyStates[ref], verificationOf(id))
     return (
       <li className="jdg-card" key={key}>
         <div className="jdg-cardRow">
@@ -343,6 +421,28 @@ export function Panel(props) {
               <span className="jdg-detailsValue">{`${entry.timeoutMs ?? '—'} ms`}</span>
               <span className="jdg-detailsKey">被引用</span>
               <span className="jdg-detailsValue">{`${purposesUsing(purposes, id, '').length} 个用途`}</span>
+            </div>
+            <div className="jdg-inlineRow">
+              <button
+                type="button"
+                className="jdg-button"
+                data-variant="outline"
+                disabled={probe?.busy === true || props.judgment === undefined}
+                onClick={() => { void runProbe(id) }}
+              >
+                {probe?.busy === true ? '自检中…' : '自检'}
+              </button>
+              <span className="jdg-note">
+                {props.judgment === undefined
+                  ? '宿主未提供自检通路：只能看到本地「已配置」，无法确认远端可用'
+                  : probe?.busy === true
+                    ? '正在向这个端点发一次最小请求…'
+                    : probe?.ok === true
+                      ? `自检通过 · ${probe.latencyMs ?? '—'}ms · 模型快照 ${probe.model ?? '—'}`
+                      : probe?.ok === false
+                        ? `自检失败 · ${probe.message}${/404|transport failure/.test(probe.message) ? '（host 半可能还是旧版本：插件更新后需要重启 DSH 才会重新加载）' : ''}`
+                        : '自检会真发一次请求（约 30–100 输入 token），确认地址、凭据与模型名真的可用'}
+              </span>
             </div>
           </div>
         ) : null}

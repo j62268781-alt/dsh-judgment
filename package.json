@@ -58,18 +58,21 @@
     "live": "pnpm build:host && node scripts/live.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.contract.json",
     "verify:contract": "node scripts/verify-contract.mjs",
-    "verify:served": "node scripts/verify-served.mjs"
+    "verify:served": "node scripts/verify-served.mjs",
+    "verify:remote": "node scripts/verify-remote.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4",
     "@deepseek-ai/cosmokit": "^1.8.5",
     "@deepseek-ai/dsh-credentials": ">=0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "^3.18.4"
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/cosmokit": "1.8.5",
     "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "^22.10.0",
     "esbuild": "^0.25.0",

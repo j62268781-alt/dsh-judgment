@@ -90,3 +90,31 @@ test('entry 名对不上时退回包名，页面仍能渲染（只是不可写�
   assert.equal(registered.length, 1)
   assert.equal(registered[0].registration.inject().entryId, 'dsh-judgment')
 })
+
+test('Remote contribution 是手写的纯数据，且 wire 名与 host 形参名一致', async () => {
+  const { judgmentContribution } = await import('../client/judgment-remote.js')
+  const contribution = judgmentContribution()
+
+  assert.equal(contribution.package, 'dsh-judgment')
+  assert.deepEqual(contribution.descriptors.map((d) => d.endpoint ?? `${d.namespace}/${d.method}`), ['judgment/status', 'judgment/health'])
+
+  const status = contribution.descriptors.find((d) => d.method === 'status')
+  const health = contribution.descriptors.find((d) => d.method === 'health')
+  assert.deepEqual(status.parameters, [], 'status() 零参数 → 客户端不传实参')
+
+  // wire 必须逐字等于 host 方法的形参名：host 侧用 Function.prototype.toString 解析形参名当 wire 名。
+  assert.equal(health.parameters.length, 1)
+  assert.equal(health.parameters[0].wire, 'options')
+  assert.equal(health.parameters[0].name, 'options')
+
+  // 名义 strict codec：客户端只查 mode，不调用 create()。
+  for (const descriptor of contribution.descriptors) {
+    for (const parameter of descriptor.parameters) {
+      assert.equal(parameter.codec.mode, 'strict')
+      assert.equal(typeof parameter.codec.typeSymbol, 'string')
+      assert.equal(typeof parameter.codec.create, 'function')
+    }
+    assert.deepEqual(descriptor.result, { mode: 'src-json' })
+    assert.deepEqual(descriptor.invocation, { kind: 'direct' })
+  }
+})

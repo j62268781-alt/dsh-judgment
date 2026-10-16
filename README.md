@@ -42,12 +42,15 @@
 
 | 能力 | 状态 |
 |---|---|
-| `ctx.judgment` Service · 两层配置（连接 × 用途）· 配置页面（增删改 + 密钥） | ✅ 可用 |
-| `ask()` 批量判断 · `health()` 远端自检 | ✅ **已跑通**（SystemOne 协议，对真实端点实测 500ms 量级） |
-| `status()` 本地状态 · `fingerprint()` 快照指纹（纯本地、零 I/O） | ✅ 可用 |
-| 严格校验：答案集合一致 / 分布完整 / 归一化 0.02 / argmax 1e-6 / 模型名快照 | ✅ 已实现，**失败即拒不修复** |
-| 计量（input/output token · 耗时 · complete） | ✅ 随结果返回；审计 ledger 与逐用途配额 ⏳ 规划中 |
-| `openai-decisions`（协议里的 `predicate`）· 工具面（`judgment/llm-face`） | ⏳ 未实现（调用时以类型化失败明确拒绝，不假装能用） |
+| `ctx.judgment` Service · 两层配置（连接 × 用途）· 配置页（增删改 + 密钥 + **自检按钮**） | ✅ 可用 |
+| `ask()` 批量判断 · `health()` 远端自检 | ✅ **已跑通**（SystemOne，真端点实测 500ms 量级） |
+| 两套协议：`system-one`（`noul`）· `openai-decisions`（`predicate`） | ✅ system-one 真网实测；openai-decisions 按上游实现写好、**尚未对着真端点验证** |
+| 严格校验：答案集合一致 / 分布完整 / 归一化 0.02 / argmax 1e-6 / 模型名快照 | ✅ 已实现，**失败即拒不修复**（两套协议共用同一份容差） |
+| 审计 ledger（发包前落库）· 逐小时配额（连接层 / 用途层）· 计量 | ✅ 已实现；落盘失败**不阻断判断**（只记日志） |
+| 工具面（`judgment/llm-face`，可选组件） | ⏳ 未实现（默认关） |
+
+> ⚠️ **插件更新后要重启 DSH**：host 半是 Node 侧模块，进程启动时加载一次；客户端半改了刷新页面即生效。
+> 自检若报 `HTTP 404` / `transport failure`，基本就是 host 半还没重载。
 
 `score` 的语义是**实测校准**过的：它返回的是级别分布的**期望值**（连续位置），不是整数下标 ——
 3 级时 `0.84`、4 级时 `1.42`，与 `Σ i·p_i` 逐位吻合。所以需要离散级别时请取分布的众数，
@@ -174,6 +177,7 @@ pnpm verify:contract  # 强制契约零 import、零运行时值
 pnpm verify:served    # 问运行中的 DSH：本插件的客户端半是否已被 composer 并生效
 pnpm probe            # 真网探针：用协议模块打一次真实端点（直接读本机 profile 与凭据）
 pnpm live             # 真网集成：boot 最小服务，走完整 Service 调 ask() / health()
+pnpm verify:remote    # 验证设置页「自检」走的 Remote 通路（两端都用本插件产物 + 交叉校验线契约）
 ```
 
 目录：
@@ -196,13 +200,12 @@ tests/                  服务 / 契约 / 客户端交接 / 纯逻辑 / 渲染
 
 ## 下一步（路线图）
 
-1. **`openai-decisions`（`predicate`）协议**：第二套协议接进同一归一化层。P0′ 探针已完成
-   （SystemOne 实测通过，并校准了 `score` 的连续语义与 `answer-shape` 校验规则）。
-2. **审计 ledger 与逐用途配额**：发包前落库（现在 usage 只在返回值里），给调用链可重放定位。
-3. **连接自检按钮**：把 `health()` 接到配置页上，让卡片从「未自检」翻到「已验证」。
-   需要一条 client→host 通路——DSH 的 Remote 要走生成的 contribution（typert 管线），
-   是本插件那套 esbuild 客户端之外的一步独立工程；在那之前用 `pnpm live` 自检。
-4. **工具面（`judgment/llm-face`，可选组件）**：3 个语义窄工具 + 1 份 skill，默认关，
+1. **`openai-decisions` 的真网校准**：协议已实现并有单测固件，但手上没有那条连接与密钥。
+   拿到一条真实连接后 `pnpm probe` 打一次，把三处待验证点回填（响应是否回显 `model`、
+   `score` 是级别下标还是像 SystemOne 那样的期望值、拒答的确切形状）。
+2. **配额可视化**：现在配额只在被拒时以 `quota-exceeded` 说话；契约的 `ConnectionStatus` /
+   `PurposeStatus` 里还没有用量字段，所以页面看不到"本小时 12/60"。
+3. **工具面（`judgment/llm-face`，可选组件）**：3 个语义窄工具 + 1 份 skill，默认关，
    绝不暴露原始 state/questions。
 
 ---

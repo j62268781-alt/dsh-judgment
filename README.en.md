@@ -47,12 +47,16 @@ the natural way to write it, and it costs an order and a half of magnitude more.
 
 | Capability | Status |
 |---|---|
-| `ctx.judgment` Service · two-layer config (connection × purpose) · config page (CRUD + key) | ✅ works |
-| `ask()` batched judgment · `health()` remote self-check | ✅ **working** (SystemOne protocol; measured against a real endpoint at ~500 ms) |
-| `status()` local state · `fingerprint()` snapshot fingerprint (pure local, zero I/O) | ✅ works |
-| Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** |
-| Metering (input/output tokens · latency · complete) | ✅ returned with every result; audit ledger and per-purpose quotas ⏳ planned |
-| `openai-decisions` (the `predicate` protocol) · tool face (`judgment/llm-face`) | ⏳ not implemented (these reject with a typed failure instead of pretending to work) |
+| `ctx.judgment` Service · two-layer config (connection × purpose) · config page (CRUD + key + **self-check button**) | ✅ works |
+| `ask()` batched judgment · `health()` remote self-check | ✅ **working** (SystemOne; measured against a real endpoint at ~500 ms) |
+| Two protocols: `system-one` (`noul`) · `openai-decisions` (`predicate`) | ✅ system-one verified live; openai-decisions implemented from the upstream reference but **not yet verified against a real endpoint** |
+| Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** (both protocols share one set of tolerances) |
+| Audit ledger (written before dispatch) · hourly quotas (per connection / per purpose) · metering | ✅ implemented; a failed ledger write **never blocks** a judgment (it logs) |
+| Tool face (`judgment/llm-face`, optional component) | ⏳ not implemented (off by default) |
+
+> ⚠️ **A plugin update needs a DSH restart**: the host half is a Node module, loaded once at process
+> start; the client half takes effect on page refresh. If the self-check reports `HTTP 404` /
+> `transport failure`, the host half is almost certainly still the old build.
 
 `score`'s semantics were **calibrated against the real endpoint**: it returns the **expected value**
 of the level distribution (a continuous position), not an integer index — 0.84 with 3 levels,
@@ -190,6 +194,7 @@ pnpm verify:contract  # enforces the contract's zero-import, zero-runtime-value 
 pnpm verify:served    # asks the running DSH whether this plugin's client half is composed and live
 pnpm probe            # live probe: one real request through the protocol modules (reads the local profile + credential)
 pnpm live             # live integration: boots a minimal service and calls ask() / health() end to end
+pnpm verify:remote    # verifies the Remote path behind the config page's self-check button (both halves, plus a wire-contract cross-check)
 ```
 
 Layout:
@@ -213,16 +218,14 @@ everything" when trimming and "abort" when acting).
 
 ## Roadmap
 
-1. **The `openai-decisions` (`predicate`) protocol** — bring the second protocol into the same
-   normalization layer. The P0′ probe is done (SystemOne verified live, and it calibrated `score`'s
-   continuous semantics plus the `answer-shape` validation rule).
-2. **Audit ledger and per-purpose quotas** — write the ledger before dispatch (usage is currently
-   only in the return value) so a call chain can be replayed.
-3. **Connection self-check button** — surface `health()` on the config page so the card flips from
-   "not self-checked" to "verified". This needs a client→host path: DSH's Remote requires a generated
-   contribution (the typert pipeline), a separate project outside this plugin's esbuild client.
-   Until then, self-check with `pnpm live`.
-4. **Tool face (`judgment/llm-face`, optional component)** — three semantically narrow tools plus
+1. **Live calibration for `openai-decisions`** — the protocol is implemented with unit fixtures, but
+   there is no connection or key for it on hand. Once one exists, run `pnpm probe` and backfill the
+   three open questions (does the response echo `model`; is `score` a level index or an expected
+   value like SystemOne's; what exactly does a refusal look like).
+2. **Quota visibility** — quotas only speak when they reject (`quota-exceeded`); the contract's
+   `ConnectionStatus` / `PurposeStatus` carry no usage field yet, so the page cannot show
+   "12/60 this hour".
+3. **Tool face (`judgment/llm-face`, optional component)** — three semantically narrow tools plus
    one skill, off by default, never exposing raw state/questions.
 
 ---

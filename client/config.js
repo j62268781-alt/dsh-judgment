@@ -210,13 +210,27 @@ export function shouldClearCredential(ref, keyState) {
  * `null` = 读不到（宿主没有凭据面），其余是 `{configured, writable, source}`。
  * 「已配置」只说密钥已在本地或环境里，**不等于远端已验证**。
  */
-export function connectionStatus(entry, keyState) {
+/**
+ * 连接的右侧状态。
+ *
+ * `keyState` 是凭据服务对"有没有值"的回答（`undefined` = 还没读到）。
+ * `verification` 是**自检结论**（`status()` 的历史记忆或刚跑完的 `health()` 结果）：
+ * 本地配置齐了只说「未自检」——把「本地配好」说成「能用」就是撒谎（§13.3 第 4 项）。
+ */
+export function connectionStatus(entry, keyState, verification) {
   if (String(entry?.baseUrl ?? '') === '') return { tone: 'warn', text: '未设地址' }
   if (String(entry?.model ?? '') === '') return { tone: 'warn', text: '未设模型' }
   if (String(entry?.credentialRef ?? '') === '') return { tone: 'warn', text: '未设凭据名' }
+  if (verification?.ok === false) return { tone: 'warn', text: `自检失败：${verification.message ?? '原因未知'}` }
+  if (verification?.ok === true) {
+    return {
+      tone: 'ok',
+      text: verification.latencyMs === undefined ? '已验证' : `已验证 · ${verification.latencyMs}ms`,
+    }
+  }
   if (keyState === undefined) return { tone: 'neutral', text: '配置完整 · 未自检' }
   if (keyState === null) return { tone: 'warn', text: '读不到密钥状态' }
-  if (keyState.writable === false && keyState.configured === true) return { tone: 'ok', text: '密钥由环境提供' }
+  if (keyState.writable === false && keyState.configured === true) return { tone: 'ok', text: '密钥由环境提供 · 未自检' }
   if (keyState.configured === true) return { tone: 'ok', text: '密钥已配置 · 未自检' }
   return { tone: 'warn', text: '密钥未配置' }
 }

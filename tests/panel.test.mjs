@@ -226,3 +226,28 @@ test('拿不到官方 Modal 时不渲染弹窗（调用方退回原生 confirm�
   assert.equal(ConfirmDialog({ dialog, primitives: {}, onCancel: noop, onConfirm: noop }), null)
   assert.equal(ConfirmDialog({ dialog: null, primitives: { Modal: () => null }, onCancel: noop, onConfirm: noop }), null)
 })
+
+/* ─────────────────── 自检按钮（走 host 半的 Remote） ─────────────────── */
+
+test('有 Remote 时：展开连接卡片能看到可用的「自检」按钮', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm(VALUE),
+    entryId: 'judgment/provider',
+    initialExpanded: 'connection:typesafe-main',
+    judgment: { health: async () => ({ ok: true, value: {} }), status: async () => ({ ok: true, value: { connections: [] } }) },
+  }))
+  assert.match(html, /自检/)
+  assert.match(html, /自检会真发一次请求/)
+  assert.doesNotMatch(html, /宿主未提供自检通路/)
+})
+
+test('没有 Remote 时：按钮禁用并说明宿主没提供自检通路', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm(VALUE),
+    entryId: 'judgment/provider',
+    initialExpanded: 'connection:typesafe-main',
+  }))
+  assert.match(html, /宿主未提供自检通路/)
+})
