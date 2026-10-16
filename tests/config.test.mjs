@@ -6,8 +6,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  blankConnection, connectionDraft, connectionValue, dictOf, findForm,
-  purposesUsing, validateConnection, validatePurpose, withoutKey,
+  blankConnection, connectionDraft, connectionStatus, connectionValue, dictOf, findForm,
+  matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing, validateConnection,
+  validatePurpose, withoutKey,
 } from '../client/config.js'
 
 const GOOD = {
@@ -115,4 +116,38 @@ test('findForm 按候选顺序取表单，未提供的 entry 抛错也不影响'
 
 test('blankConnection 的字段与 Host 默认值一致（只有名字不同）', () => {
   assert.deepEqual(blankConnection(), { ...GOOD, name: '' })
+})
+
+test('搜索匹配：空查询全命中，命中任一字段即可，大小写不敏感', () => {
+  assert.equal(matchesQuery(['typesafe-main', 'https://api.typesafe.ai', 'typesafe/jev-1.13'], ''), true)
+  assert.equal(matchesQuery(['typesafe-main'], '  '), true)
+  assert.equal(matchesQuery(['typesafe-main', 'https://api.typesafe.ai'], 'TYPESAFE'), true)
+  assert.equal(matchesQuery(['mobile.action', 'typesafe-main'], 'action'), true)
+  assert.equal(matchesQuery(['mobile.action', 'typesafe-main'], 'browser'), false)
+  assert.equal(matchesQuery([null, undefined, 42], '42'), true)
+})
+
+test('连接状态：缺哪一项就说哪一项，配齐也只说「未自检」', () => {
+  assert.equal(connectionStatus({ ...GOOD, baseUrl: '' }).text, '未设地址')
+  assert.equal(connectionStatus({ ...GOOD, model: '' }).text, '未设模型')
+  assert.equal(connectionStatus({ ...GOOD, credentialRef: '' }).text, '未设凭据引用')
+  const full = connectionStatus(GOOD)
+  assert.equal(full.tone, 'neutral')
+  assert.match(full.text, /未自检/, '本地配置完整不等于远端已验证')
+})
+
+test('用途状态：指向已配置连接 / 跟随默认 / 连接不存在 / 没得跟', () => {
+  const connections = { main: GOOD }
+  assert.deepEqual(purposeStatus({ connection: 'main' }, connections, ''), { tone: 'ok', text: '指向已配置连接' })
+  assert.deepEqual(purposeStatus({ connection: '' }, connections, 'main'), { tone: 'ok', text: '跟随默认连接' })
+  assert.equal(purposeStatus({ connection: 'gone' }, connections, '').tone, 'danger')
+  assert.equal(purposeStatus({ connection: 'gone' }, connections, '').text, '连接不存在')
+  assert.equal(purposeStatus({ connection: '' }, connections, '').tone, 'warn')
+  assert.equal(purposeStatus({ connection: '' }, connections, '').text, '未指向连接')
+})
+
+test('用途标签：指向哪儿，或「默认」/「无连接」', () => {
+  assert.equal(purposeTargetLabel({ connection: 'main' }, ''), 'main')
+  assert.equal(purposeTargetLabel({ connection: '' }, 'main'), '默认')
+  assert.equal(purposeTargetLabel({ connection: '' }, ''), '无连接')
 })

@@ -1,20 +1,18 @@
 /**
- * Judgment 配置页：连接层 × 用途层，列表 + 增删改（无页签）。
+ * 决策配置页：连接层 × 用途层，列表 + 增删改（无页签）。
  *
- * 交互与 skills-mcp 面板一致：卡片列出条目，「…」里编辑/删除，编辑时卡片**就地变成表单**，
- * 保存即写回设置文档（Host 会在落盘前校验完整候选，所以我们这里的校验只是提前给话）。
- *
- * 写回走 `form.set(field, value)`；老宿主没有 `set` 时退回 `props.mutate(entryId, ops)`。
- * 每次保存都从**当前快照**重算整个字典，避免拿旧快照覆盖别人的修改。
+ * 视觉与交互对齐 skills-mcp 面板（用户要求）：一行「搜索 + 新增」，卡片**可展开**
+ * （收起时只显示名字/标签/右侧状态，展开后是详情表），「…」里编辑删除，
+ * 编辑时卡片就地变表单。写入走 `form.set(field, value)`，老宿主退回 `props.mutate`。
  */
 import './react.js'
 import { useEffect, useState } from 'react'
 import {
-  PROTOCOLS, blankConnection, blankPurpose, connectionDraft, connectionValue,
-  describeConnection, dictOf, purposesUsing, snapshotOf, statusOf,
-  validateConnection, validatePurpose, withoutKey,
+  PROTOCOLS, blankConnection, blankPurpose, connectionDraft, connectionStatus, connectionValue,
+  describeConnection, dictOf, matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing,
+  snapshotOf, statusOf, validateConnection, validatePurpose, withoutKey,
 } from './config.js'
-import { Field, MoreMenu, Tag } from './components.jsx'
+import { Chevron, Field, MoreMenu, SearchIcon, Status, Tag } from './components.jsx'
 import CSS from './styles.css'
 
 const EMPTY = {}
@@ -26,6 +24,8 @@ export function Panel(props) {
   const [busy, setBusy] = useState(false)
   const [editor, setEditor] = useState(null)
   const [draft, setDraft] = useState(EMPTY)
+  const [expanded, setExpanded] = useState('')
+  const [query, setQuery] = useState('')
 
   // 宿主的设置镜像变了就重画（别的编辑器/别的窗口写回也会走到这里）。
   useEffect(() => {
@@ -38,9 +38,18 @@ export function Panel(props) {
   const connections = dictOf(value, 'connections')
   const purposes = dictOf(value, 'purposes')
   const defaultConnection = typeof value?.defaultConnection === 'string' ? value.defaultConnection : ''
-  const connectionIds = Object.keys(connections)
-  const purposeIds = Object.keys(purposes)
   const writable = typeof form?.set === 'function' || typeof props.mutate === 'function'
+
+  /** 正在编辑的那一条：过滤时也要留着，否则保存前表单会被搜掉。 */
+  const editingConnection = editor?.kind === 'connection' && editor.isNew !== true ? editor.id : undefined
+  const editingPurpose = editor?.kind === 'purpose' && editor.isNew !== true ? editor.id : undefined
+
+  const connectionIds = Object.keys(connections)
+    .filter((id) => id === editingConnection
+      || matchesQuery([id, connections[id].protocol, connections[id].baseUrl, connections[id].model, connections[id].credentialRef], query))
+  const purposeIds = Object.keys(purposes)
+    .filter((name) => name === editingPurpose
+      || matchesQuery([name, purposeTargetLabel(purposes[name], defaultConnection)], query))
 
   /** 一次写入：整个字段一次原子提交。 */
   async function commit(field, next) {
@@ -110,9 +119,8 @@ export function Panel(props) {
     const note = affected.length === 0 ? '' : `\n\n有 ${affected.length} 处指向它（${affected.join('、')}），删除后那些用途会失效。`
     if (typeof window !== 'undefined' && !window.confirm(`删除连接「${id}」？${note}`)) return
     setError('')
-    const next = withoutKey(connections, id)
     const clearingDefault = defaultConnection === id
-    if (await commit('connections', next)) {
+    if (await commit('connections', withoutKey(connections, id))) {
       if (clearingDefault) await commit('defaultConnection', '')
       closeEditor()
     }
@@ -124,20 +132,33 @@ export function Panel(props) {
     if (await commit('purposes', withoutKey(purposes, name))) closeEditor()
   }
 
+  function toggle(key) {
+    setExpanded((current) => (current === key ? '' : key))
+  }
+
+  /* ─────────────────── 连接 ─────────────────── */
+
   function connectionCard(id) {
     const entry = connections[id] ?? {}
+    const key = `connection:${id}`
+    const open = expanded === key
+    const state = connectionStatus(entry)
     return (
-      <li className="jdg-card" key={`connection:${id}`}>
+      <li className="jdg-card" key={key}>
         <div className="jdg-cardRow">
-          <div className="jdg-cardMain">
-            <div className="jdg-cardHead">
-              <span className="jdg-cardIdentity">
-                {id}
-                <Tag>{entry.protocol}</Tag>
-              </span>
-            </div>
-            <div className="jdg-cardDescription">{describeConnection(entry)}</div>
-          </div>
+          <button
+            type="button"
+            className="jdg-cardToggle"
+            aria-expanded={open}
+            onClick={() => toggle(key)}
+          >
+            <Chevron open={open} />
+            <span className="jdg-cardIdentity">
+              {id}
+              <Tag>{entry.protocol}</Tag>
+            </span>
+          </button>
+          <span className="jdg-cardEnd"><Status tone={state.tone} text={state.text} /></span>
           <span className="jdg-cardActions">
             <MoreMenu
               disabled={busy || !writable}
@@ -148,14 +169,23 @@ export function Panel(props) {
             />
           </span>
         </div>
-        <div className="jdg-details">
-          <span className="jdg-detailsKey">凭据引用</span>
-          <span className="jdg-detailsValue">{entry.credentialRef || '—'}</span>
-          <span className="jdg-detailsKey">超时</span>
-          <span className="jdg-detailsValue">{`${entry.timeoutMs ?? '—'} ms`}</span>
-          <span className="jdg-detailsKey">被引用</span>
-          <span className="jdg-detailsValue">{`${purposesUsing(purposes, id, '').length} 个用途`}</span>
-        </div>
+        <div className="jdg-cardDescription">{describeConnection(entry)}</div>
+        {open ? (
+          <div className="jdg-cardDetails">
+            <div className="jdg-details">
+              <span className="jdg-detailsKey">地址</span>
+              <span className="jdg-detailsValue">{entry.baseUrl || '—'}</span>
+              <span className="jdg-detailsKey">模型</span>
+              <span className="jdg-detailsValue">{entry.model || '—'}</span>
+              <span className="jdg-detailsKey">凭据引用</span>
+              <span className="jdg-detailsValue">{entry.credentialRef || '—'}</span>
+              <span className="jdg-detailsKey">超时</span>
+              <span className="jdg-detailsValue">{`${entry.timeoutMs ?? '—'} ms`}</span>
+              <span className="jdg-detailsKey">被引用</span>
+              <span className="jdg-detailsValue">{`${purposesUsing(purposes, id, '').length} 个用途`}</span>
+            </div>
+          </div>
+        ) : null}
       </li>
     )
   }
@@ -231,24 +261,30 @@ export function Panel(props) {
     )
   }
 
+  /* ─────────────────── 用途 ─────────────────── */
+
   function purposeCard(name) {
-    const connection = purposes[name]?.connection ?? ''
+    const purpose = purposes[name] ?? {}
+    const key = `purpose:${name}`
+    const open = expanded === key
+    const state = purposeStatus(purpose, connections, defaultConnection)
+    const target = purposeTargetLabel(purpose, defaultConnection)
     return (
-      <li className="jdg-card" key={`purpose:${name}`}>
+      <li className="jdg-card" key={key}>
         <div className="jdg-cardRow">
-          <div className="jdg-cardMain">
-            <div className="jdg-cardHead">
-              <span className="jdg-cardIdentity">
-                {name}
-                <Tag tone={connection === '' ? 'neutral' : 'ok'}>{connection === '' ? '跟随默认连接' : connection}</Tag>
-              </span>
-            </div>
-            <div className="jdg-cardDescription">
-              {connection === ''
-                ? '未指定连接：调用时用「默认连接」（只配了一条连接时就是那一条）'
-                : `消费者报用途名 "${name}" 时，走连接 "${connection}"`}
-            </div>
-          </div>
+          <button
+            type="button"
+            className="jdg-cardToggle"
+            aria-expanded={open}
+            onClick={() => toggle(key)}
+          >
+            <Chevron open={open} />
+            <span className="jdg-cardIdentity">
+              {name}
+              <Tag tone={state.tone === 'ok' ? 'ok' : 'neutral'}>{target}</Tag>
+            </span>
+          </button>
+          <span className="jdg-cardEnd"><Status tone={state.tone} text={state.text} /></span>
           <span className="jdg-cardActions">
             <MoreMenu
               disabled={busy || !writable}
@@ -259,6 +295,23 @@ export function Panel(props) {
             />
           </span>
         </div>
+        <div className="jdg-cardDescription">
+          {String(purpose.connection ?? '') === ''
+            ? '未指定连接：调用时落到「默认连接」'
+            : `消费者报用途名 "${name}" 时，走连接 "${purpose.connection}"`}
+        </div>
+        {open ? (
+          <div className="jdg-cardDetails">
+            <div className="jdg-details">
+              <span className="jdg-detailsKey">指向连接</span>
+              <span className="jdg-detailsValue">{String(purpose.connection ?? '') || '（跟随默认连接）'}</span>
+              <span className="jdg-detailsKey">实际使用</span>
+              <span className="jdg-detailsValue">{state.tone === 'danger' ? '无法解析' : target}</span>
+              <span className="jdg-detailsKey">调用方式</span>
+              <span className="jdg-detailsValue">{`ctx.judgment.ask(state, questions, { purpose: '${name}' })`}</span>
+            </div>
+          </div>
+        ) : null}
       </li>
     )
   }
@@ -283,7 +336,7 @@ export function Panel(props) {
               onChange={(event) => setDraft({ ...draft, connection: event.target.value })}
             >
               <option value="">跟随默认连接</option>
-              {connectionIds.map((id) => <option key={id} value={id}>{id}</option>)}
+              {Object.keys(connections).map((id) => <option key={id} value={id}>{id}</option>)}
             </select>
           </Field>
         </div>
@@ -297,28 +350,30 @@ export function Panel(props) {
     )
   }
 
+  /* ─────────────────── 渲染 ─────────────────── */
+
   const connectionCards = [
     ...(editor?.kind === 'connection' && editor.isNew === true ? [connectionForm()] : []),
-    ...connectionIds.map((id) => (editor?.kind === 'connection' && editor.isNew !== true && editor.id === id ? connectionForm() : connectionCard(id))),
+    ...connectionIds.map((id) => (editingConnection === id ? connectionForm() : connectionCard(id))),
   ]
 
   const purposeCards = [
     ...(editor?.kind === 'purpose' && editor.isNew === true ? [purposeForm()] : []),
-    ...purposeIds.map((name) => (editor?.kind === 'purpose' && editor.isNew !== true && editor.id === name ? purposeForm() : purposeCard(name))),
+    ...purposeIds.map((name) => (editingPurpose === name ? purposeForm() : purposeCard(name))),
   ]
 
   const sections = [
     {
       key: 'connections',
-      title: '连接',
-      summary: `共 ${connectionIds.length} 条 · 每条 = （协议 · 地址 · 模型 · 凭据引用）；密钥值不在配置里`,
+      title: `连接 (${Object.keys(connections).length})`,
+      summary: '每条 = （协议 · 地址 · 模型 · 凭据引用）；密钥值不在配置里，只存引用名',
       empty: '还没有连接。一条连接就是一组「协议 + 地址 + 模型 + 凭据引用」。',
       cards: connectionCards,
     },
     {
       key: 'purposes',
-      title: '用途',
-      summary: `共 ${purposeIds.length} 个 · 消费者只报用途名，用途指向一条连接`,
+      title: `用途 (${Object.keys(purposes).length})`,
+      summary: '给消费者一个稳定名字：代码里只写用途名，换连接 / 换模型 / 换密钥都不用改代码',
       empty: '还没有用途。消费者用用途名要能力（例如 mobile.action），在这里把它指向一条连接。',
       cards: purposeCards,
     },
@@ -336,15 +391,29 @@ export function Panel(props) {
             结构化判断能力：一次调用 = 一份状态 + 一批命名问题 → 概率答案。它判断，消费者决定。
           </p>
         </div>
-        <div className="jdg-toolbar">
-          <button className="jdg-button" data-variant="outline" disabled={busy || !writable} onClick={() => openCreate('connection')}>
-            新增连接
-          </button>
-          <button className="jdg-button" data-variant="outline" disabled={busy || !writable} onClick={() => openCreate('purpose')}>
-            新增用途
-          </button>
-        </div>
       </header>
+
+      <div className="jdg-summary">
+        {`共 ${Object.keys(connections).length} 条连接 · ${Object.keys(purposes).length} 个用途 · 增删改保存后立即生效`}
+      </div>
+
+      <div className="jdg-filterRow">
+        <span className="jdg-search">
+          <span className="jdg-searchIcon"><SearchIcon /></span>
+          <input
+            className="jdg-searchInput"
+            value={query}
+            placeholder="搜索连接名 / 地址 / 模型 / 用途名"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </span>
+        <button className="jdg-button" data-variant="primary" disabled={busy || !writable} onClick={() => openCreate('connection')}>
+          新增连接
+        </button>
+        <button className="jdg-button" data-variant="outline" disabled={busy || !writable} onClick={() => openCreate('purpose')}>
+          新增用途
+        </button>
+      </div>
 
       {status === 'loading' ? <p className="jdg-empty">正在读取设置…</p> : null}
       {writable ? null : <p className="jdg-note">当前设置文档不可写：这个 profile 里该插件的配置被更高层覆盖了。</p>}
@@ -359,7 +428,7 @@ export function Panel(props) {
           onChange={(event) => { void commit('defaultConnection', event.target.value) }}
         >
           <option value="">未设置 —— 只配了一条连接时用那一条，否则调用必须给用途名</option>
-          {connectionIds.map((id) => <option key={id} value={id}>{id}</option>)}
+          {Object.keys(connections).map((id) => <option key={id} value={id}>{id}</option>)}
         </select>
       </div>
 
@@ -370,7 +439,9 @@ export function Panel(props) {
           </div>
           <div className="jdg-groupSub">{section.summary}</div>
           <ul className="jdg-cards">
-            {section.cards.length === 0 ? <li className="jdg-empty">{section.empty}</li> : section.cards}
+            {section.cards.length === 0
+              ? <li className="jdg-empty">{query === '' ? section.empty : '没有匹配的条目。'}</li>
+              : section.cards}
           </ul>
         </section>
       ))}

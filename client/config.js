@@ -138,6 +138,42 @@ export function withoutKey(dict, key) {
   return next
 }
 
+/* ─────────────────── 列表：搜索与右侧状态 ─────────────────── */
+
+/** 搜索匹配：任一字段包含子串即命中；空查询全部命中。 */
+export function matchesQuery(needles, query) {
+  const needle = String(query ?? '').trim().toLowerCase()
+  if (needle === '') return true
+  return needles.some((value) => String(value ?? '').toLowerCase().includes(needle))
+}
+
+/**
+ * 连接的右侧状态。**只根据配置本身判断**——「配置完整」不等于远端可用，
+ * 所以措辞留出「未自检」这一档，别让它读起来像"已验证"（§13.3 第 4 项）。
+ */
+export function connectionStatus(entry) {
+  if (String(entry?.baseUrl ?? '') === '') return { tone: 'warn', text: '未设地址' }
+  if (String(entry?.model ?? '') === '') return { tone: 'warn', text: '未设模型' }
+  if (String(entry?.credentialRef ?? '') === '') return { tone: 'warn', text: '未设凭据引用' }
+  return { tone: 'neutral', text: '配置完整 · 未自检' }
+}
+
+/** 用途的右侧状态：它最终会落到哪条连接、落不落得到。 */
+export function purposeStatus(purpose, connections, defaultConnection) {
+  const target = String(purpose?.connection ?? '')
+  const resolved = target !== '' ? target : String(defaultConnection ?? '')
+  if (resolved === '') return { tone: 'warn', text: '未指向连接' }
+  if (connections?.[resolved] === undefined) return { tone: 'danger', text: '连接不存在' }
+  return { tone: 'ok', text: target === '' ? '跟随默认连接' : '指向已配置连接' }
+}
+
+/** 用途卡片上的标签：它指向哪儿。 */
+export function purposeTargetLabel(purpose, defaultConnection) {
+  const target = String(purpose?.connection ?? '')
+  if (target !== '') return target
+  return String(defaultConnection ?? '') === '' ? '无连接' : '默认'
+}
+
 /** 哪些用途指向这条连接（删除连接前要讲清楚代价）。 */
 export function purposesUsing(purposes, connectionId, defaultConnection) {
   return Object.entries(purposes)

@@ -1,15 +1,25 @@
 /*
- * Judgment 配置页样式。类名一律 jdg- 前缀：样式是页面挂载时全局注入的，
+ * 决策配置页样式。类名一律 jdg- 前缀：样式是页面挂载时全局注入的，
  * 而 skills-mcp 面板用的是 smp- 前缀，两套页面可能同时挂载（设置页签会保活），
- * 所以不能共用类名。取自那套面板的视觉（卡片 + 表单网格 + 「…」菜单），用的都是
- * 主题变量，所以跟随 Harness 的明暗与配色。
+ * 所以不能共用类名。视觉对齐那套面板（卡片 + 可展开行 + 搜索行 + 「…」菜单），
+ * 全部走主题变量，跟随 Harness 的明暗与配色。
  */
 .jdg-page{box-sizing:border-box;width:100%;color:var(--dsw-alias-label-primary);flex-direction:column;align-items:center;gap:14px;display:flex}
 .jdg-page>*{width:100%;max-width:960px}
 .jdg-pageHead{box-sizing:border-box;justify-content:space-between;align-items:flex-start;gap:16px;display:flex}
 .jdg-pageTitle{margin:0;font-size:18px;font-weight:500;line-height:26px}
 .jdg-pageIntro{color:var(--dsw-alias-label-secondary);margin:4px 0 0;font-size:13px;line-height:20px}
-.jdg-toolbar{justify-content:flex-end;align-items:center;gap:8px;display:flex;flex:none}
+.jdg-summary{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:-6px 0 0}
+
+/* 搜索行：搜索框 + 主操作。与面板的 filterRow 同形。 */
+.jdg-filterRow{display:flex;align-items:center;gap:8px}
+.jdg-search{flex:1 1 auto;min-width:140px;color:var(--dsw-alias-label-tertiary);align-items:center;display:flex;position:relative}
+.jdg-searchIcon{position:absolute;left:12px;display:inline-flex;pointer-events:none}
+.jdg-searchInput{box-sizing:border-box;width:100%;height:36px;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);padding:0 12px 0 36px}
+.jdg-searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}
+.jdg-searchInput:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
+
+/* 默认连接：一行标签 + 选择器（标签不能被 flex 挤断）。 */
 .jdg-inlineRow{display:flex;align-items:center;gap:10px}
 .jdg-inlineRow .jdg-label{flex:none;white-space:nowrap}
 .jdg-inlineRow .jdg-select{flex:1 1 auto;min-width:0}
@@ -20,17 +30,34 @@
 .jdg-groupTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
 .jdg-groupSub{color:var(--dsw-alias-label-tertiary);flex-wrap:wrap;row-gap:4px;margin:-6px 0 0;font-size:12px;line-height:18px;display:flex}
 
+/* 卡片：左列是「箭头 + 标题」，右列是状态与操作；展开体在行之外占满整宽。 */
 .jdg-cards{flex-direction:column;gap:14px;margin:0;padding:0;list-style:none;display:flex}
 .jdg-card{border:.5px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-settings-card-fill);border-radius:var(--dsw-radius-xl);flex-direction:column;gap:4px;padding:12px 14px;min-width:0;display:flex}
 .jdg-cardRow{align-items:center;gap:10px;min-width:0;display:flex}
-.jdg-cardMain{flex:1 1 auto;min-width:0;flex-direction:column;gap:4px;display:flex}
-.jdg-cardHead{align-items:center;gap:10px;min-width:0;display:flex}
+.jdg-cardToggle{box-sizing:border-box;color:inherit;font:inherit;text-align:left;cursor:pointer;background:0 0;border:0;flex:1 1 auto;align-items:center;gap:8px;min-width:0;padding:0;display:inline-flex}
 .jdg-cardIdentity{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px;min-width:0;overflow-wrap:anywhere}
 .jdg-cardIdentity .jdg-tag{margin-left:6px}
-.jdg-cardActions{align-items:center;gap:4px;margin-left:auto;flex:none;display:inline-flex}
+.jdg-cardEnd{flex:none;align-items:center;gap:8px;display:inline-flex}
+.jdg-cardActions{align-items:center;gap:4px;flex:none;display:inline-flex}
 .jdg-cardDescription{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+.jdg-cardDetails{border-top:.5px solid var(--dsw-alias-border-l2);padding:12px 0 0}
+.jdg-card>.jdg-cardDetails:first-child{border-top:0;padding-top:0}
 
-.jdg-details{grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:8px 0 0;display:grid;font-size:12px;line-height:18px}
+.jdg-chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .14s ease-in-out}
+.jdg-chevron[data-open=false]{transform:rotate(-90deg)}
+
+/* 状态：圆点承担颜色、文字承担含义；danger 一档文字也要跟上（它是真要用户动手的事）。 */
+.jdg-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;line-height:16px;white-space:nowrap}
+.jdg-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-tertiary,#9aa4b2)}
+.jdg-dot[data-dot=ok]{background:var(--dsw-alias-state-success-primary,#067647)}
+.jdg-dot[data-dot=warn]{background:var(--dsw-alias-state-warn-primary,#b54708)}
+.jdg-dot[data-dot=danger]{background:var(--dsw-alias-state-error-primary,#d92d20)}
+.jdg-dot[data-dot=neutral]{background:var(--dsw-alias-label-tertiary,#9aa4b2)}
+.jdg-statusText{color:var(--dsw-alias-label-secondary)}
+.jdg-status:has(.jdg-dot[data-dot=danger]) .jdg-statusText{color:var(--dsw-alias-state-error-primary,#d92d20)}
+.jdg-status:has(.jdg-dot[data-dot=warn]) .jdg-statusText{color:var(--dsw-alias-state-warn-primary,#b54708)}
+
+.jdg-details{grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:0;display:grid;font-size:12px;line-height:18px}
 .jdg-detailsKey{color:var(--dsw-alias-label-tertiary)}
 .jdg-detailsValue{color:var(--dsw-alias-label-secondary);word-break:break-all}
 
@@ -39,6 +66,7 @@
 .jdg-tag[data-tone=ok]{background:var(--dsw-alias-state-success-tertiary,var(--dsw-alias-bg-module-platform));color:var(--dsw-alias-state-success-primary,#067647)}
 
 .jdg-formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.jdg-card>.jdg-formGrid:first-child{margin-top:0}
 .jdg-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .jdg-field[data-wide=true]{grid-column:1 / -1}
 .jdg-label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}

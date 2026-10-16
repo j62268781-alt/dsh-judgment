@@ -17,7 +17,7 @@ const AUTHORITY = process.env.DSH_AUTHORITY ?? '127.0.0.1:19387'
 const PACKAGE = 'dsh-judgment'
 
 /** boot 数据里必须出现的客户端产物；缺它就是没被 composer。 */
-const NEEDLES = ['.jdg-page', 'settings.section', '决策', '新增连接', '新增用途', '还没有连接']
+const NEEDLES = ['.jdg-page', 'settings.section', '决策', '搜索连接名', '新增连接', '新增用途', '还没有连接']
 
 function cookie() {
   let secret

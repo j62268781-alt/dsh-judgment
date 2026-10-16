@@ -59,3 +59,40 @@ export function MoreMenu({ items, disabled }) {
 export function Tag({ children, tone = 'neutral' }) {
   return <span className="jdg-tag" data-tone={tone}>{children}</span>
 }
+
+/** 卡片左侧的展开箭头（收起时转 -90°）。 */
+export function Chevron({ open }) {
+  return (
+    <svg
+      className="jdg-chevron"
+      data-open={String(open)}
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** 搜索结果行右侧的圆点状态（颜色承担状态，文字承担含义）。 */
+export function Status({ tone, text }) {
+  return (
+    <span className="jdg-status">
+      <span className="jdg-dot" data-dot={tone} aria-hidden="true" />
+      <span className="jdg-statusText">{text}</span>
+    </span>
+  )
+}
+
+/** 搜索框里的放大镜。 */
+export function SearchIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M10.2 10.2 13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}

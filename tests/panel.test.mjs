@@ -54,26 +54,33 @@ const VALUE = {
   defaultConnection: 'typesafe-main',
 }
 
-test('页面把连接与用途画成列表', async () => {
+test('页面把连接与用途画成列表（对齐 skills-mcp 的卡片布局）', async () => {
   const { Panel } = await loadPanel()
   const html = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm(VALUE), entryId: 'judgment/provider' }))
 
-  assert.match(html, /决策/)
-  // 连接卡片：名字、协议标签、副标题、凭据引用
-  assert.match(html, /typesafe-main/)
-  assert.match(html, /system-one/)
-  assert.match(html, /https:\/\/api\.typesafe\.ai\/v1\/systemone/)
-  assert.match(html, /typesafe\/jev-1\.13/)
-  assert.match(html, /TYPESAFE_API_KEY/)
-  // 用途卡片：名字 + 指向的连接
-  assert.match(html, /mobile\.action/)
-  // 两个分区与默认连接选择器
-  assert.match(html, /连接/)
-  assert.match(html, /用途/)
-  assert.match(html, /默认连接/)
-  // 操作入口
+  assert.match(html, />决策<\/h2>/)
+  // 页面摘要 + 搜索行 + 两个新增入口
+  assert.match(html, /共 1 条连接 · 1 个用途/)
+  assert.match(html, /搜索连接名 \/ 地址 \/ 模型 \/ 用途名/)
   assert.match(html, /新增连接/)
   assert.match(html, /新增用途/)
+  // 分区标题带计数
+  assert.match(html, /连接 \(1\)/)
+  assert.match(html, /用途 \(1\)/)
+  // 连接卡片：箭头 + 名字 + 协议标签 + 右侧状态 + 副标题
+  // （断言 class 属性而不是类名——注入的 CSS 文本里也会出现这些类名）
+  assert.match(html, /class="jdg-chevron"/)
+  assert.match(html, /typesafe-main/)
+  assert.match(html, /system-one/)
+  assert.match(html, /配置完整 · 未自检/)
+  assert.match(html, /https:\/\/api\.typesafe\.ai\/v1\/systemone/)
+  assert.match(html, /typesafe\/jev-1\.13/)
+  // 用途卡片：名字 + 指向 + 右侧状态
+  assert.match(html, /mobile\.action/)
+  assert.match(html, /指向已配置连接/)
+  assert.match(html, /默认连接/)
+  // 默认收起：详情表不渲染（展开才出现）
+  assert.doesNotMatch(html, /class="jdg-cardDetails"/)
 })
 
 test('空配置给出下一步，而不是空页面', async () => {
