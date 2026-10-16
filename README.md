@@ -1,2 +1,191 @@
-# dsh-judgment
-Structured judgment plugin for DeepSeek Harness: ask batched named questions (choice, score, yes-probability) and get calibrated probabilities from TypeSafe Jev, Luna, or any compatible endpoint. Strict validation, per-connection config, audit ledger, budget metering. It judges; your agent decides. Types-only contract at ./contract.
+# dsh-judgment · 决策
+
+面向 **DeepSeek Harness** 的结构化判断插件：一次调用 = 一份状态 + 一批命名问题 → 一批概率答案。
+
+> **它判断，消费者决定。** 本插件只提供「批量概率判定」这一项能力，**不提供循环**——
+> 观察、寻址、阈值门控、缺答案时的取舍、loop 转移，全部留在消费者（你的 agent）那一侧。
+
+---
+
+## 这是什么
+
+```
+        ┌─────────────────────── dsh-judgment ───────────────────────┐
+        │  ctx.judgment：多协议归一化 · 严格校验 · 凭据 · 审计 · 计量 · 指纹 │
+        └───┬──────────────────┬───────────────────┬────────────────────────┘
+            │ Service 直调      │ Service 直调       │
+   ┌────────▼────────┐ ┌───────▼────────┐ ┌────────▼─────────┐
+   │ dsh-sidebar-    │ │ LLM / 你自己的   │ │ 任何拿到 ctx 的   │
+   │ mobile 的循环    │ │ agent 循环       │ │ 插件             │
+   └─────────────────┘ └────────────────┘ └──────────────────┘
+```
+
+一次 JEV 调用 = **一份状态 + 一批命名问题** → **一批概率答案**。理解这一点之后，
+「把判断能力开放出去」就变成「如何把领域判断表达成批量概率问题」。
+
+当前已实现的三种问题原语：
+
+| 原语 | 语义 | 答案 |
+|---|---|---|
+| `noul` | 单个概率 p ∈ [0,1]（是/否） | `{ probability }` |
+| `choice` | 2–255 个互斥候选单选 | `{ optionId, probabilities }`（**完整分布**，不只是 argmax） |
+| `score` | 2–10 个有序级别 | `{ value, probabilities }` |
+
+**为什么必须批量**：状态随每一批问题只发一次，批量相比逐个提问约 **38 倍**量级差异。
+「一次问一个问题」是很自然的写法，但它会让成本高一个半数量级。
+
+---
+
+## 现在能用什么（诚实清单）
+
+| 能力 | 状态 |
+|---|---|
+| `ctx.judgment` Service · 两层配置（连接 × 用途）· 配置页面（增删改 + 密钥） | ✅ 可用 |
+| `status()` 本地状态 · `fingerprint()` 快照指纹（纯本地、零 I/O） | ✅ 可用 |
+| `ask()` / `health()` 的**协议层** | ⏳ **尚未实现**——按设计先跑协议探针（见文末），现在会以类型化失败 `internal` 拒绝 |
+| 严格校验（集合一致 / 归一化 0.02 / argmax 1e-6 / 模型名）· 计量 · 审计 ledger | ⏳ 规划中（校验容差与指纹规则已冻结在契约里） |
+
+> 也就是说：**现在能装、能配、能拿到指纹与状态，但还不能真的问出去。**
+
+---
+
+## 安装
+
+```bash
+# 本地路径（开发用；profile 名见 ~/.dsh/profiles）
+dsh plugin --profile <profile> add /绝对路径/dsh-judgment
+
+# 或从 GitHub 装（仓库根带 cordis.patch.yml，可直接作为插件包安装）
+dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
+```
+
+装完在 **设置 → 决策** 里配置。本插件**零工具**：它不会往模型面前塞任何工具，
+只注册一个 Service（工具面是另一个可选组件，默认关）。
+
+---
+
+## 配置：连接层 × 用途层
+
+配置页两个页签，字段也可以直接手写在 profile 的 `cordis.patch.yml`：
+
+```yaml
+- id: judgment/provider
+  name: dsh-judgment
+  config:
+    connections:                    # 连接层：一个 (协议, 地址, 模型, 凭据) 元组 = 一条连接
+      typesafe-main:
+        protocol: system-one        # system-one | openai-decisions（协议身份显式，不由 URL 推断）
+        baseUrl: https://api.typesafe.ai/v1/systemone
+        model: typesafe/jev-1.13    # 请 pin 到具体版本，别用会漂移的别名
+        credentialRef: JUDGMENT_API_KEY_1
+        timeoutMs: 10000
+    purposes:                       # 用途层：消费者只报用途名
+      browser.action: { connection: typesafe-main }
+      compaction.retain: { connection: typesafe-main }
+    defaultConnection: ''           # 调用没给用途名时用它；留空且只配了一条连接时用那一条
+```
+
+**「用途」是干什么的**：它是给消费者的**稳定名字**，把「我要这类判断」和
+「这判断具体走哪条连接 / 哪个模型 / 哪把密钥」解耦开。代码里写 `browser.action`，
+换厂商、换模型、换密钥都只改配置，不动消费者一行代码。
+未知用途名**直接报错**，绝不静默换一条连接。
+多个用途可以共用一条连接；一个用途只能指向一条连接。
+
+---
+
+## 密钥怎么给
+
+密钥**永远不写进配置**。凭据引用名本身就是环境变量名（DSH 凭据服务的设计），
+所以两条路都行：
+
+| 方式 | 怎么做 | 页面表现 |
+|---|---|---|
+| 页面上填 | 设置 → 决策 → 连接 → 密钥（密码框，**保存后不回显**） | 显示「已配置 · 来源 file」 |
+| 环境变量 | 启动 DSH 之前设 `JUDGMENT_API_KEY_1=sk-xxx`（或写进 dotenv） | 显示「由启动环境提供（只读）」，输入框锁住 |
+
+优先级：**启动环境 > 存储文件 > 项目 dotenv > 用户 dotenv**。
+启动环境那一层只读且不可覆盖；存储文件永远不覆盖启动环境。
+
+引用名由插件自动分配（`JUDGMENT_API_KEY_1`、`_2`…，取最小空号），你不需要记它。
+删除连接时会**先清除它的密钥**——序号会被回收，否则新连接会读到上一把遗留的 key。
+
+> ⚠️ 环境变量与 dotenv 都是**启动时**取的快照：运行中新增 / 修改变量不会被读到，
+> 必须在启动 DSH 之前设好。
+
+---
+
+## 消费者怎么用
+
+```ts
+import type { ApiVersion, Judge } from 'dsh-judgment/contract'
+
+const EXPECTED: ApiVersion = 1                         // 版本契约就是本地这个常量
+const judge = ctx.get('judgment') as Judge | undefined  // 可选依赖：缺失返回 undefined，不抛错
+if (!judge || judge.apiVersion !== EXPECTED) return useFallbackJudge()
+
+const state = { page: 'a11y 摘要……' }                    // 不透明载荷，形状由你定
+const questions = {
+  action: {
+    kind: 'choice',
+    prompt: '哪一步最能推进当前任务？',
+    options: { e0: '点击「搜索」', e1: '在输入框输入' },
+  },
+  goal_done: { kind: 'noul', prompt: '任务目标已经达成' },
+  retain: { kind: 'score', prompt: '这段输出要逐字保留多少？', levels: ['丢弃', '截断', '保留'] },
+}
+
+const result = await judge.ask(state, questions, { purpose: 'browser.action' })
+
+for (const [id, answer] of Object.entries(result.answers)) {
+  // 没有判断的问题以 abstain 出现，**不是缺键**：该保留还是该中止由你的领域决定
+  if (answer.kind === 'abstain') continue
+  if (answer.kind === 'choice') console.log(id, answer.optionId, answer.probabilities)
+}
+
+// 不变量：地址只对产生它的快照有效。执行前用指纹比对，不一致就丢弃。
+const now = judge.fingerprint(state, questions, { purpose: 'browser.action' })
+if (now !== result.fingerprint) return 'stale_state'
+```
+
+结果里带齐溯源：`answers` · `fingerprint` · `usage`（token / 耗时 / 估算成本 / 是否完整）·
+`provider`（协议身份）· `connection` · `model`（**响应返回的模型快照**）。
+
+契约入口 `dsh-judgment/contract` **只出类型**：零 `import`、零运行时值，
+`import type` 之后编译期就被擦除，**运行期不引入本插件的任何代码**。
+它固定了 `Judge` 接口、三种问题原语、答案形状、校验容差与 `JudgmentError` 的形状——
+provider 实现、第三方替换、`HostModelJudge` 兜底都按它对齐。
+
+---
+
+## 开发
+
+```bash
+pnpm install
+pnpm build            # Host(tsc) + 客户端(esbuild → lib/client.js)
+pnpm test             # Service / 契约 / 客户端交接 / 纯逻辑 / react-dom 渲染
+pnpm typecheck        # 含契约的 exactOptionalPropertyTypes + noUncheckedIndexedAccess
+pnpm verify:contract  # 强制契约零 import、零运行时值
+pnpm verify:served    # 问运行中的 DSH：本插件的客户端半是否已被 composer 并生效
+```
+
+目录：
+
+```
+src/contract/index.ts   唯一冻结面（仅类型，零依赖）
+src/index.ts            入口 "."：注册 ctx.judgment
+src/config.ts           两层配置（schemastery）
+src/provider/           错误类型 · 指纹
+client/                 配置页面（统一 JSX，esbuild 打成 window.__ModuleLoader__ 单文件）
+tests/                  服务 / 契约 / 客户端交接 / 纯逻辑 / 渲染
+```
+
+设计要点（都写在契约的 TSDoc 里）：**校验失败即拒、绝不"修复"**——"修复"一个不自洽的
+概率分布等于用猜测覆盖证据；**provider 永不返回默认值**，没有判断就是 `abstain`；
+**loop 必须留在消费者**——同一协议的安全方向按领域相反（裁剪域缺答案 = 全保留，
+动作域缺答案 = 中止）。
+
+---
+
+## 许可
+
+MIT
