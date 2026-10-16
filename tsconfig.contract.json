@@ -1,0 +1,17 @@
+{
+  "//": "只编译 src/contract：零 import、零运行时值（§13.9）。types: [] 让任何 node:* 用法直接编译失败，AbortSignal 由 DOM lib 提供。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/contract/**/*.ts"]
+}

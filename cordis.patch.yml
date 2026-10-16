@@ -1,0 +1,5 @@
+# One Host row owns the judgment Service (`ctx.judgment`) and its configuration page.
+# 零工具：工具面是另一个组件（judgment/llm-face），默认关，首版不做。
+- insert:
+    - id: judgment/provider
+      name: dsh-judgment
