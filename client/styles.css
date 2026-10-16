@@ -39,6 +39,9 @@
 .jdg-cardIdentity .jdg-tag{margin-left:6px}
 .jdg-cardEnd{flex:none;align-items:center;gap:8px;display:inline-flex}
 .jdg-cardActions{align-items:center;gap:4px;flex:none;display:inline-flex}
+.jdg-probeLine{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+.jdg-probeLine[data-tone=ok]{color:var(--dsw-alias-state-success-primary,#12805c)}
+.jdg-probeLine[data-tone=warn]{color:var(--dsw-alias-state-error-primary,#d92d20)}
 .jdg-cardDescription{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
 .jdg-cardDetails{border-top:.5px solid var(--dsw-alias-border-l2);padding:12px 0 0}
 .jdg-card>.jdg-cardDetails:first-child{border-top:0;padding-top:0}
@@ -94,6 +97,7 @@
 .jdg-menuItem{box-sizing:border-box;width:100%;text-align:left;border:0;background:0 0;border-radius:var(--dsw-radius-sm);padding:6px 10px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap}
 .jdg-menuItem:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .jdg-menuItem[data-variant=danger]{color:var(--dsw-alias-state-error-primary,#d92d20)}
+.jdg-menuItem:disabled{opacity:.45;cursor:default}
 
 .jdg-empty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px;line-height:20px;list-style:none}
 .jdg-note{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:0;list-style:none}

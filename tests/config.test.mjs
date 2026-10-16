@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   blankConnection, connectionDraft, connectionStatus, connectionValue, CREDENTIAL_PREFIX, dictOf,
-  findForm, keyFieldState, matchesQuery, nextCredentialRef, purposeStatus, purposeTargetLabel,
+  findForm, keyFieldState, keyStateText, matchesQuery, nextCredentialRef, purposeStatus, purposeTargetLabel,
   purposesUsing, resolveCredentialRef, shouldClearCredential, validateConnection, validateKey,
   validatePurpose, withoutKey,
 } from '../client/config.js'
@@ -230,4 +230,12 @@ test('用途标签：指向哪儿，或「默认」/「无连接」', () => {
   assert.equal(purposeTargetLabel({ connection: 'main' }, ''), 'main')
   assert.equal(purposeTargetLabel({ connection: '' }, 'main'), '默认')
   assert.equal(purposeTargetLabel({ connection: '' }, ''), '无连接')
+})
+
+test('密钥那一行只说凭据本身（能不能用属于自检，不混在一起）', () => {
+  assert.equal(keyStateText(undefined), '读取中…')
+  assert.equal(keyStateText(null), '读不到状态')
+  assert.equal(keyStateText({ configured: false, writable: true }), '未配置')
+  assert.equal(keyStateText({ configured: true, writable: true }), '已配置')
+  assert.equal(keyStateText({ configured: true, writable: false, source: 'env' }), '由环境提供（只读）')
 })

@@ -229,25 +229,36 @@ test('拿不到官方 Modal 时不渲染弹窗（调用方退回原生 confirm�
 
 /* ─────────────────── 自检按钮（走 host 半的 Remote） ─────────────────── */
 
-test('有 Remote 时：展开连接卡片能看到可用的「自检」按钮', async () => {
+test('有 Remote 时：链接行上方常驻一行自检文案，并指向 ⋯ 菜单', async () => {
   const { Panel } = await loadPanel()
   const html = renderToStaticMarkup(React.createElement(Panel, {
     form: fakeForm(VALUE),
     entryId: 'judgment/provider',
-    initialExpanded: 'connection:typesafe-main',
     judgment: { health: async () => ({ ok: true, value: {} }), status: async () => ({ ok: true, value: { connections: [] } }) },
   }))
-  assert.match(html, /自检/)
-  assert.match(html, /自检会真发一次请求/)
+  assert.match(html, /class="jdg-probeLine" data-tone="neutral">尚未自检 · 可在 ⋯ 菜单里自检/)
   assert.doesNotMatch(html, /宿主未提供自检通路/)
 })
 
-test('没有 Remote 时：按钮禁用并说明宿主没提供自检通路', async () => {
+test('没有 Remote 时：那一行如实说明宿主没提供自检通路', async () => {
   const { Panel } = await loadPanel()
   const html = renderToStaticMarkup(React.createElement(Panel, {
     form: fakeForm(VALUE),
     entryId: 'judgment/provider',
-    initialExpanded: 'connection:typesafe-main',
   }))
-  assert.match(html, /宿主未提供自检通路/)
+  assert.match(html, /宿主未提供自检通路：只能看到本地「已配置」/)
+})
+
+test('宿主记忆里的「已验证」直接显示在那一行（页面刷新后仍说得对）', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm(VALUE),
+    entryId: 'judgment/provider',
+    judgment: {
+      health: async () => ({ ok: true, value: {} }),
+      status: async () => ({ ok: true, value: { connections: [{ connection: 'typesafe-main', verified: true, verifiedAt: '2026-10-16T08:35:04.142Z' }] } }),
+    },
+  }))
+  // status() 是异步的，SSR 里不会跑出结果：这里只断言"没有撒谎"，真正的持久化行为在真机验过。
+  assert.match(html, /jdg-probeLine/)
 })

@@ -9,7 +9,7 @@ import './react.js'
 import { useEffect, useState } from 'react'
 import {
   PROTOCOLS, blankConnection, blankPurpose, connectionDraft, connectionStatus, connectionValue,
-  describeConnection, dictOf, keyFieldState, matchesQuery, purposeStatus,
+  describeConnection, dictOf, keyFieldState, keyStateText, matchesQuery, purposeStatus,
   purposeTargetLabel, purposesUsing, resolveCredentialRef, shouldClearCredential, snapshotOf, statusOf,
   validateConnection, validateKey, validatePurpose, withoutKey,
 } from './config.js'
@@ -338,6 +338,33 @@ export function Panel(props) {
   }
 
   /**
+   * 卡片上那行自检文案（常驻，不展开也能看见）。
+   *
+   * 与右侧状态标签分工：标签给**结论**（已验证 / 自检失败 / 未自检），这一行给**细节**
+   * （耗时、模型快照、失败原因、或者"去哪儿自检"）。
+   */
+  function probeLine(id) {
+    const probe = probes[id]
+    if (probe?.busy === true) return { tone: 'neutral', text: '正在自检…（向这个端点发一次最小请求）' }
+    const state = verificationOf(id)
+    if (state?.ok === false) {
+      const hint = /404|transport failure/.test(state.message ?? '') ? '（host 半可能是旧版本：插件更新后需重启 DSH）' : ''
+      return { tone: 'warn', text: `自检失败 · ${state.message ?? '原因未知'}${hint}` }
+    }
+    if (state?.ok === true) {
+      if (probe?.ok === true) {
+        return { tone: 'ok', text: `自检通过 · ${probe.latencyMs ?? '—'}ms · 模型快照 ${probe.model ?? '—'}` }
+      }
+      // 宿主记忆（页面刷新后）：只有时刻，没有耗时与快照。
+      const at = typeof state.at === 'string' ? new Date(state.at) : undefined
+      const when = at === undefined || Number.isNaN(at.getTime()) ? '' : ` · 上次 ${at.toLocaleTimeString()}`
+      return { tone: 'ok', text: `已验证${when}` }
+    }
+    if (props.judgment === undefined) return { tone: 'neutral', text: '宿主未提供自检通路：只能看到本地「已配置」，无法确认远端可用' }
+    return { tone: 'neutral', text: '尚未自检 · 可在 ⋯ 菜单里自检（会真发一次请求）' }
+  }
+
+  /**
    * 跑一次自检：让 **host 半**发一次最小请求（`ctx.judgment.health()`）。
    *
    * 两条实测约束：Remote 返回的是**信封**（`{ok,value}` / `{ok,error}`，resolve 不 reject）；
@@ -378,6 +405,7 @@ export function Panel(props) {
     const open = expanded === key
     const ref = String(entry.credentialRef ?? '')
     const probe = probes[id]
+    const probeState = probeLine(id)
     const state = connectionStatus(entry, ref === '' ? null : keyStates[ref], verificationOf(id))
     return (
       <li className="jdg-card" key={key}>
@@ -397,14 +425,18 @@ export function Panel(props) {
           <span className="jdg-cardEnd"><Status tone={state.tone} text={state.text} /></span>
           <span className="jdg-cardActions">
             <MoreMenu
-              disabled={busy || !writable}
+              // 菜单本身只在忙时禁用：自检是**读**动作，配置只读时也照样能用，
+              // 所以"能不能编辑/删除"的禁用粒度放到条目上。
+              disabled={busy}
               items={[
-                ['编辑', () => openEdit('connection', id)],
-                ['删除', () => { void removeConnection(id) }, 'danger'],
+                ['自检', () => { void runProbe(id) }, undefined, props.judgment === undefined || probe?.busy === true],
+                ['编辑', () => openEdit('connection', id), undefined, !writable],
+                ['删除', () => { void removeConnection(id) }, 'danger', !writable],
               ]}
             />
           </span>
         </div>
+        <div className="jdg-probeLine" data-tone={probeState.tone}>{probeState.text}</div>
         <div className="jdg-cardDescription">{describeConnection(entry)}</div>
         {open ? (
           <div className="jdg-cardDetails">
@@ -416,33 +448,11 @@ export function Panel(props) {
               <span className="jdg-detailsKey">凭据名</span>
               <span className="jdg-detailsValue">{ref || '—（按连接名派生）'}</span>
               <span className="jdg-detailsKey">密钥</span>
-              <span className="jdg-detailsValue">{state.text}</span>
+              <span className="jdg-detailsValue">{keyStateText(ref === '' ? null : keyStates[ref])}</span>
               <span className="jdg-detailsKey">超时</span>
               <span className="jdg-detailsValue">{`${entry.timeoutMs ?? '—'} ms`}</span>
               <span className="jdg-detailsKey">被引用</span>
               <span className="jdg-detailsValue">{`${purposesUsing(purposes, id, '').length} 个用途`}</span>
-            </div>
-            <div className="jdg-inlineRow">
-              <button
-                type="button"
-                className="jdg-button"
-                data-variant="outline"
-                disabled={probe?.busy === true || props.judgment === undefined}
-                onClick={() => { void runProbe(id) }}
-              >
-                {probe?.busy === true ? '自检中…' : '自检'}
-              </button>
-              <span className="jdg-note">
-                {props.judgment === undefined
-                  ? '宿主未提供自检通路：只能看到本地「已配置」，无法确认远端可用'
-                  : probe?.busy === true
-                    ? '正在向这个端点发一次最小请求…'
-                    : probe?.ok === true
-                      ? `自检通过 · ${probe.latencyMs ?? '—'}ms · 模型快照 ${probe.model ?? '—'}`
-                      : probe?.ok === false
-                        ? `自检失败 · ${probe.message}${/404|transport failure/.test(probe.message) ? '（host 半可能还是旧版本：插件更新后需要重启 DSH 才会重新加载）' : ''}`
-                        : '自检会真发一次请求（约 30–100 输入 token），确认地址、凭据与模型名真的可用'}
-              </span>
             </div>
           </div>
         ) : null}
@@ -552,10 +562,10 @@ export function Panel(props) {
           <span className="jdg-cardEnd"><Status tone={state.tone} text={state.text} /></span>
           <span className="jdg-cardActions">
             <MoreMenu
-              disabled={busy || !writable}
+              disabled={busy}
               items={[
-                ['编辑', () => openEdit('purpose', name)],
-                ['删除', () => { void removePurpose(name) }, 'danger'],
+                ['编辑', () => openEdit('purpose', name), undefined, !writable],
+                ['删除', () => { void removePurpose(name) }, 'danger', !writable],
               ]}
             />
           </span>

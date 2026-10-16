@@ -36,14 +36,15 @@ export function MoreMenu({ items, disabled }) {
         <>
           <span className="jdg-menuScrim" onClick={() => setOpen(false)} />
           <span className="jdg-menu" role="menu">
-            {items.map(([label, run, variant]) => (
+            {items.map(([label, run, variant, itemDisabled]) => (
               <button
                 type="button"
                 key={label}
                 role="menuitem"
                 className="jdg-menuItem"
                 data-variant={variant}
-                onClick={() => { setOpen(false); run() }}
+                disabled={itemDisabled === true}
+                onClick={() => { setOpen(false); if (itemDisabled === true) return; run() }}
               >
                 {label}
               </button>

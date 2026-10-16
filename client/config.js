@@ -211,6 +211,20 @@ export function shouldClearCredential(ref, keyState) {
  * 「已配置」只说密钥已在本地或环境里，**不等于远端已验证**。
  */
 /**
+ * 凭据本身的**只读**状态文案（不含自检结论）。
+ *
+ * 卡片上「密钥」这一行只说密钥本身（有没有值、从哪来）；"能不能用"属于自检，
+ * 有单独的位置显示——两件事混在一行里会让人分不清"配好了"和"验证过"。
+ */
+export function keyStateText(keyState) {
+  if (keyState === undefined) return '读取中…'
+  if (keyState === null) return '读不到状态'
+  if (keyState.configured !== true) return '未配置'
+  if (keyState.writable === false) return '由环境提供（只读）'
+  return '已配置'
+}
+
+/**
  * 连接的右侧状态。
  *
  * `keyState` 是凭据服务对"有没有值"的回答（`undefined` = 还没读到）。
