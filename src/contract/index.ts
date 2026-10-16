@@ -342,6 +342,11 @@ export interface JudgmentTarget {
 /**
  * 单次调用的预算上限；provider 另有逐连接 / 逐用途配额（§13.6）。
  *
+ * **可执行性（诚实说明）**：`maxMs` 在**发包前**生效——provider 用它收窄这次请求的超时；
+ * `maxTokens` / `maxUsd` **只能事后比对**（发包前无法知道端点怎么分词，也没有价目表），
+ * 超出预算的那次调用照常返回答案，但会被记进审计 ledger 的 `budgetExceeded`——
+ * "已经花掉的钱"没有事后取消这回事。配额（`quota`）才是**发包前**拦截成本的手段。
+ *
  * **turn 级熔断不在 provider**——它不知道 turn 边界，挂 `agent/turn-stopping`
  * 属于消费者（§3.3 边界 4、§13.6）。
  */

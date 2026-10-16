@@ -39,6 +39,9 @@ const CONFIG = {
   },
   purposes: { 'browser.action': { connection: 'typesafe-main' } },
   defaultConnection: '',
+  // 这个文件测的是决策逻辑，不测 ledger：**关掉落盘**，免得测试往用户 home 里写账。
+  // ledger 的落盘/配额/预算另有 tests/ledger.test.mjs（用临时目录）。
+  ledger: { enabled: false, path: '' },
 }
 
 const NOUL = { answerable: { kind: 'noul', prompt: 'Is this answerable?' } }
@@ -220,7 +223,8 @@ test('凭据没有值：not-configured，且不发包', async () => {
 test('未实现的协议：internal（明确拒绝，不假装能用）', async () => {
   const config = {
     ...CONFIG,
-    connections: { 'luna': { ...CONFIG.connections['typesafe-main'], protocol: 'openai-decisions' } },
+    // 契约的 ProtocolId 是开放联合：第三方实现可以自报身份，但没有编解码器就必须明确拒绝。
+    connections: { 'third-party': { ...CONFIG.connections['typesafe-main'], protocol: 'any-jev' } },
     purposes: {},
   }
   const judge = await service({ config })
@@ -228,12 +232,22 @@ test('未实现的协议：internal（明确拒绝，不假装能用）', async 
     () => json(REPLY),
     async (calls) => {
       await assert.rejects(
-        () => judge.ask('s', NOUL, { connection: 'luna' }),
-        (error) => error instanceof JudgmentError && error.code === 'internal',
+        () => judge.ask('s', NOUL, { connection: 'third-party' }),
+        (error) => error instanceof JudgmentError
+          && error.code === 'internal'
+          && /system-one/.test(error.message),
       )
       assert.equal(calls.length, 0)
     },
   )
+})
+
+test('已接归一化层的两套协议都在编解码器表里：system-one 与 openai-decisions', async () => {
+  const mod = await import('../lib/provider/protocols.js')
+  assert.deepEqual(Object.keys(mod.PROTOCOLS).sort(), ['openai-decisions', 'system-one'])
+  assert.equal(mod.codecFor('system-one').id, 'system-one')
+  assert.equal(mod.codecFor('openai-decisions').id, 'openai-decisions')
+  assert.equal(mod.codecFor('any-jev'), undefined)
 })
 
 test('HTTP 状态映射：401 → unauthorized、429 → rate-limited、500 → unavailable', async () => {

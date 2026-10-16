@@ -177,7 +177,16 @@ test('连接状态：缺哪一项说哪一项；密钥状态另算', () => {
   const stored = connectionStatus(GOOD, { configured: true, writable: true })
   assert.equal(stored.tone, 'ok')
   assert.match(stored.text, /未自检/, '密钥已配置也不等于远端已验证')
-  assert.equal(connectionStatus(GOOD, { configured: true, writable: false, source: 'env' }).text, '密钥由环境提供')
+  assert.equal(connectionStatus(GOOD, { configured: true, writable: false, source: 'env' }).text, '密钥由环境提供 · 未自检')
+
+  // 自检结论优先于「未自检」：本地配好 ≠ 远端能用，凑齐了也只说"未自检"。
+  assert.equal(connectionStatus(GOOD, { configured: true, writable: true }, { ok: true, latencyMs: 42 }).text, '已验证 · 42ms')
+  assert.equal(connectionStatus(GOOD, { configured: true, writable: true }, { ok: true }).text, '已验证')
+  const failed = connectionStatus(GOOD, { configured: true, writable: true }, { ok: false, message: 'unauthorized · 凭据被拒（HTTP 401）' })
+  assert.equal(failed.tone, 'warn')
+  assert.match(failed.text, /自检失败：unauthorized/)
+  // 本地缺项仍然先报缺项：自检结论不能掩盖"连地址都没填"。
+  assert.equal(connectionStatus({ ...GOOD, baseUrl: '' }, undefined, { ok: true, latencyMs: 5 }).text, '未设地址')
 })
 
 test('删连接时该不该清凭据：环境提供的（只读）跳过，别挡住删除', () => {
