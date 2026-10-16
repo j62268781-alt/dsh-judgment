@@ -331,7 +331,7 @@ export function Panel(props) {
       <style>{CSS}</style>
       <header className="jdg-pageHead">
         <div>
-          <h2 className="jdg-pageTitle">Judgment</h2>
+          <h2 className="jdg-pageTitle">决策</h2>
           <p className="jdg-pageIntro">
             结构化判断能力：一次调用 = 一份状态 + 一批命名问题 → 概率答案。它判断，消费者决定。
           </p>

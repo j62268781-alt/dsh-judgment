@@ -19,7 +19,7 @@ export function apply(ctx) {
     name: 'settings.section',
     id: 'judgment',
     order: 21,
-    label: () => 'Judgment',
+    label: () => '决策',
     inject: () => ({ form, entryId }),
   }, Panel))
 }

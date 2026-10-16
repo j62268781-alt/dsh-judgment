@@ -64,7 +64,7 @@ test('apply 注册 settings.section，并把配置表单交给页面', async () 
   assert.equal(registration.name, 'settings.section')
   assert.equal(registration.id, 'judgment')
   assert.equal(registration.order, 21)
-  assert.equal(registration.label(), 'Judgment')
+  assert.equal(registration.label(), '决策')
   assert.equal(typeof Component, 'function')
 
   // 页面拿到的就是那个 entry 的表单，并且知道该用哪个 entry id 写回。

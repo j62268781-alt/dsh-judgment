@@ -58,7 +58,7 @@ test('页面把连接与用途画成列表', async () => {
   const { Panel } = await loadPanel()
   const html = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm(VALUE), entryId: 'judgment/provider' }))
 
-  assert.match(html, /Judgment/)
+  assert.match(html, /决策/)
   // 连接卡片：名字、协议标签、副标题、凭据引用
   assert.match(html, /typesafe-main/)
   assert.match(html, /system-one/)
