@@ -35,7 +35,7 @@ The three question primitives:
 |---|---|---|
 | `noul` | a single probability p ∈ [0,1] (yes/no) | `{ probability }` |
 | `choice` | one pick among 2–255 mutually exclusive candidates | `{ optionId, probabilities }` — the **full distribution**, not just the argmax |
-| `score` | 2–10 ordered levels | `{ value, probabilities }` |
+| `score` | 2–10 ordered levels | `{ value, probabilities }` — `value` is a **level position** and may be fractional |
 
 **Why batching is mandatory**: the state is sent once per batch, so batching is roughly a
 **38×** difference in cost versus asking one question at a time. Asking one question per call is
@@ -48,12 +48,16 @@ the natural way to write it, and it costs an order and a half of magnitude more.
 | Capability | Status |
 |---|---|
 | `ctx.judgment` Service · two-layer config (connection × purpose) · config page (CRUD + key) | ✅ works |
+| `ask()` batched judgment · `health()` remote self-check | ✅ **working** (SystemOne protocol; measured against a real endpoint at ~500 ms) |
 | `status()` local state · `fingerprint()` snapshot fingerprint (pure local, zero I/O) | ✅ works |
-| The **protocol layer** behind `ask()` / `health()` | ⏳ **not implemented yet** — the design runs a protocol probe first (see the end of this file); for now these reject with the typed failure `internal` |
-| Strict validation (set equality / normalization 0.02 / argmax 1e-6 / model name) · metering · audit ledger | ⏳ planned (the tolerances and fingerprint rules are already frozen in the contract) |
+| Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** |
+| Metering (input/output tokens · latency · complete) | ✅ returned with every result; audit ledger and per-purpose quotas ⏳ planned |
+| `openai-decisions` (the `predicate` protocol) · tool face (`judgment/llm-face`) | ⏳ not implemented (these reject with a typed failure instead of pretending to work) |
 
-> In other words: **you can install it, configure it, and get fingerprints and status today —
-> but it cannot actually ask anything out yet.**
+`score`'s semantics were **calibrated against the real endpoint**: it returns the **expected value**
+of the level distribution (a continuous position), not an integer index — 0.84 with 3 levels,
+1.42 with 4, matching `Σ i·p_i` to the digit. So if you need a discrete level, take the mode of the
+distribution; the provider never rounds for you.
 
 ---
 
@@ -184,6 +188,8 @@ pnpm test             # Service / contract / client handoff / pure logic / react
 pnpm typecheck        # contract compiled with exactOptionalPropertyTypes + noUncheckedIndexedAccess
 pnpm verify:contract  # enforces the contract's zero-import, zero-runtime-value discipline
 pnpm verify:served    # asks the running DSH whether this plugin's client half is composed and live
+pnpm probe            # live probe: one real request through the protocol modules (reads the local profile + credential)
+pnpm live             # live integration: boots a minimal service and calls ask() / health() end to end
 ```
 
 Layout:
@@ -207,16 +213,15 @@ everything" when trimming and "abort" when acting).
 
 ## Roadmap
 
-In "falsify first, invest later" order:
-
-1. **Protocol probe (P0′)** — hit 2–3 protocols directly (TypeSafe SystemOne + OpenRouter + an
-   OpenAI-compatible one) to verify that **one normalized schema is enough**. This is the step
-   most likely to overturn the shape of the normalization layer, so it comes before writing any
-   protocol code.
-2. **Strict validation · metering · audit ledger** — set equality / normalization 0.02 /
-   argmax 1e-6 / model name; reject on failure, **never repair**; write the ledger before sending.
-3. **Connection self-check** — a `health()` button on the config page that really sends one
-   request, separating "configured" from "reachable right now".
+1. **The `openai-decisions` (`predicate`) protocol** — bring the second protocol into the same
+   normalization layer. The P0′ probe is done (SystemOne verified live, and it calibrated `score`'s
+   continuous semantics plus the `answer-shape` validation rule).
+2. **Audit ledger and per-purpose quotas** — write the ledger before dispatch (usage is currently
+   only in the return value) so a call chain can be replayed.
+3. **Connection self-check button** — surface `health()` on the config page so the card flips from
+   "not self-checked" to "verified". This needs a client→host path: DSH's Remote requires a generated
+   contribution (the typert pipeline), a separate project outside this plugin's esbuild client.
+   Until then, self-check with `pnpm live`.
 4. **Tool face (`judgment/llm-face`, optional component)** — three semantically narrow tools plus
    one skill, off by default, never exposing raw state/questions.
 

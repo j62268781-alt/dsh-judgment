@@ -31,7 +31,7 @@
 |---|---|---|
 | `noul` | 单个概率 p ∈ [0,1]（是/否） | `{ probability }` |
 | `choice` | 2–255 个互斥候选单选 | `{ optionId, probabilities }`（**完整分布**，不只是 argmax） |
-| `score` | 2–10 个有序级别 | `{ value, probabilities }` |
+| `score` | 2–10 个有序级别 | `{ value, probabilities }`（`value` 是**级别位置**，可为小数） |
 
 **为什么必须批量**：状态随每一批问题只发一次，批量相比逐个提问约 **38 倍**量级差异。
 「一次问一个问题」是很自然的写法，但它会让成本高一个半数量级。
@@ -43,11 +43,15 @@
 | 能力 | 状态 |
 |---|---|
 | `ctx.judgment` Service · 两层配置（连接 × 用途）· 配置页面（增删改 + 密钥） | ✅ 可用 |
+| `ask()` 批量判断 · `health()` 远端自检 | ✅ **已跑通**（SystemOne 协议，对真实端点实测 500ms 量级） |
 | `status()` 本地状态 · `fingerprint()` 快照指纹（纯本地、零 I/O） | ✅ 可用 |
-| `ask()` / `health()` 的**协议层** | ⏳ **尚未实现**——按设计先跑协议探针（见文末），现在会以类型化失败 `internal` 拒绝 |
-| 严格校验（集合一致 / 归一化 0.02 / argmax 1e-6 / 模型名）· 计量 · 审计 ledger | ⏳ 规划中（校验容差与指纹规则已冻结在契约里） |
+| 严格校验：答案集合一致 / 分布完整 / 归一化 0.02 / argmax 1e-6 / 模型名快照 | ✅ 已实现，**失败即拒不修复** |
+| 计量（input/output token · 耗时 · complete） | ✅ 随结果返回；审计 ledger 与逐用途配额 ⏳ 规划中 |
+| `openai-decisions`（协议里的 `predicate`）· 工具面（`judgment/llm-face`） | ⏳ 未实现（调用时以类型化失败明确拒绝，不假装能用） |
 
-> 也就是说：**现在能装、能配、能拿到指纹与状态，但还不能真的问出去。**
+`score` 的语义是**实测校准**过的：它返回的是级别分布的**期望值**（连续位置），不是整数下标 ——
+3 级时 `0.84`、4 级时 `1.42`，与 `Σ i·p_i` 逐位吻合。所以需要离散级别时请取分布的众数，
+provider 绝不替你四舍五入。
 
 ---
 
@@ -168,6 +172,8 @@ pnpm test             # Service / 契约 / 客户端交接 / 纯逻辑 / react-d
 pnpm typecheck        # 含契约的 exactOptionalPropertyTypes + noUncheckedIndexedAccess
 pnpm verify:contract  # 强制契约零 import、零运行时值
 pnpm verify:served    # 问运行中的 DSH：本插件的客户端半是否已被 composer 并生效
+pnpm probe            # 真网探针：用协议模块打一次真实端点（直接读本机 profile 与凭据）
+pnpm live             # 真网集成：boot 最小服务，走完整 Service 调 ask() / health()
 ```
 
 目录：
@@ -190,13 +196,12 @@ tests/                  服务 / 契约 / 客户端交接 / 纯逻辑 / 渲染
 
 ## 下一步（路线图）
 
-按"先证伪、后投入"的顺序：
-
-1. **协议探针（P0′）**：直打 2–3 个协议（TypeSafe SystemOne + OpenRouter + 一个 OpenAI 兼容），
-   验证「一套归一化 schema 是否够用」。这一步最可能推翻归一化层的形态，所以排在写协议代码之前。
-2. **严格校验 · 计量 · 审计 ledger**：集合一致 / 归一化 0.02 / argmax 1e-6 / 模型名，
-   失败即拒**不修复**；发包前先落库。
-3. **连接自检**：配置页上的 `health()` 按钮——真发一次包，把「已配置」与「远端可用」分开。
+1. **`openai-decisions`（`predicate`）协议**：第二套协议接进同一归一化层。P0′ 探针已完成
+   （SystemOne 实测通过，并校准了 `score` 的连续语义与 `answer-shape` 校验规则）。
+2. **审计 ledger 与逐用途配额**：发包前落库（现在 usage 只在返回值里），给调用链可重放定位。
+3. **连接自检按钮**：把 `health()` 接到配置页上，让卡片从「未自检」翻到「已验证」。
+   需要一条 client→host 通路——DSH 的 Remote 要走生成的 contribution（typert 管线），
+   是本插件那套 esbuild 客户端之外的一步独立工程；在那之前用 `pnpm live` 自检。
 4. **工具面（`judgment/llm-face`，可选组件）**：3 个语义窄工具 + 1 份 skill，默认关，
    绝不暴露原始 state/questions。
 
