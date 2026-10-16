@@ -1,0 +1,72 @@
+/*
+ * Judgment 配置页样式。类名一律 jdg- 前缀：样式是页面挂载时全局注入的，
+ * 而 skills-mcp 面板用的是 smp- 前缀，两套页面可能同时挂载（设置页签会保活），
+ * 所以不能共用类名。取自那套面板的视觉（卡片 + 表单网格 + 「…」菜单），用的都是
+ * 主题变量，所以跟随 Harness 的明暗与配色。
+ */
+.jdg-page{box-sizing:border-box;width:100%;color:var(--dsw-alias-label-primary);flex-direction:column;align-items:center;gap:14px;display:flex}
+.jdg-page>*{width:100%;max-width:960px}
+.jdg-pageHead{box-sizing:border-box;justify-content:space-between;align-items:flex-start;gap:16px;display:flex}
+.jdg-pageTitle{margin:0;font-size:18px;font-weight:500;line-height:26px}
+.jdg-pageIntro{color:var(--dsw-alias-label-secondary);margin:4px 0 0;font-size:13px;line-height:20px}
+.jdg-toolbar{justify-content:flex-end;align-items:center;gap:8px;display:flex;flex:none}
+.jdg-inlineRow{display:flex;align-items:center;gap:10px}
+.jdg-inlineRow .jdg-select{flex:1 1 auto;min-width:0}
+
+.jdg-group{flex-direction:column;gap:10px;display:flex;border-top:.5px solid var(--dsw-alias-border-l2);padding-top:14px}
+.jdg-group:first-of-type{border-top:0;padding-top:0}
+.jdg-groupTitleRow{align-items:center;gap:8px;min-height:36px;display:flex}
+.jdg-groupTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
+.jdg-groupSub{color:var(--dsw-alias-label-tertiary);flex-wrap:wrap;row-gap:4px;margin:-6px 0 0;font-size:12px;line-height:18px;display:flex}
+
+.jdg-cards{flex-direction:column;gap:14px;margin:0;padding:0;list-style:none;display:flex}
+.jdg-card{border:.5px solid var(--dsw-alias-settings-card-stroke);background:var(--dsw-alias-settings-card-fill);border-radius:var(--dsw-radius-xl);flex-direction:column;gap:4px;padding:12px 14px;min-width:0;display:flex}
+.jdg-cardRow{align-items:center;gap:10px;min-width:0;display:flex}
+.jdg-cardMain{flex:1 1 auto;min-width:0;flex-direction:column;gap:4px;display:flex}
+.jdg-cardHead{align-items:center;gap:10px;min-width:0;display:flex}
+.jdg-cardIdentity{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px;min-width:0;overflow-wrap:anywhere}
+.jdg-cardIdentity .jdg-tag{margin-left:6px}
+.jdg-cardActions{align-items:center;gap:4px;margin-left:auto;flex:none;display:inline-flex}
+.jdg-cardDescription{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.jdg-details{grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:8px 0 0;display:grid;font-size:12px;line-height:18px}
+.jdg-detailsKey{color:var(--dsw-alias-label-tertiary)}
+.jdg-detailsValue{color:var(--dsw-alias-label-secondary);word-break:break-all}
+
+.jdg-tag{display:inline-flex;align-items:center;border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;white-space:nowrap}
+.jdg-tag[data-tone=neutral]{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}
+.jdg-tag[data-tone=ok]{background:var(--dsw-alias-state-success-tertiary,var(--dsw-alias-bg-module-platform));color:var(--dsw-alias-state-success-primary,#067647)}
+
+.jdg-formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.jdg-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.jdg-field[data-wide=true]{grid-column:1 / -1}
+.jdg-label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.jdg-hint{font-size:11px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
+.jdg-input,.jdg-select{box-sizing:border-box;width:100%;height:36px;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);padding:0 10px}
+.jdg-input[readonly]{color:var(--dsw-alias-label-secondary)}
+.jdg-select{appearance:none;-webkit-appearance:none;padding:0 30px 0 10px;background-color:var(--dsw-alias-bg-layer-1);background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6.5 8 10.5 12 6.5' stroke='%238b8f99' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:14px}
+.jdg-input:focus-visible,.jdg-select:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}
+
+.jdg-button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:32px;padding:0 14px;border:.5px solid transparent;border-radius:var(--dsw-radius-md);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;flex:none}
+.jdg-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.jdg-button:active:not(:disabled){background:var(--dsw-alias-interactive-bg-active)}
+.jdg-button[data-variant=outline]{border-color:var(--dsw-alias-border-l3)}
+.jdg-button[data-variant=primary]{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
+.jdg-button[data-variant=primary]:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
+.jdg-button:disabled{opacity:.4;cursor:not-allowed}
+.jdg-actionsRow{display:flex;align-items:center;gap:8px;margin-top:10px}
+
+.jdg-more{position:relative;display:inline-flex;flex:none}
+.jdg-moreTrigger{box-sizing:border-box;width:22px;height:22px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.jdg-moreTrigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.jdg-moreTrigger:disabled{opacity:.5;cursor:default}
+.jdg-menuScrim{position:fixed;inset:0;z-index:40}
+.jdg-menu{position:absolute;top:calc(100% + 4px);right:0;z-index:41;min-width:104px;padding:4px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1,#fff);border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.jdg-menuItem{box-sizing:border-box;width:100%;text-align:left;border:0;background:0 0;border-radius:var(--dsw-radius-sm);padding:6px 10px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap}
+.jdg-menuItem:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.jdg-menuItem[data-variant=danger]{color:var(--dsw-alias-state-error-primary,#d92d20)}
+
+.jdg-empty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:13px;line-height:20px;list-style:none}
+.jdg-note{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:0;list-style:none}
+.jdg-note code{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11px;background:var(--dsw-alias-bg-module-platform);border-radius:var(--dsw-radius-xs,4px);padding:0 4px}
+.jdg-error{color:var(--dsw-alias-state-error-primary,var(--dsw-alias-label-primary));font-size:12px;line-height:18px;margin:0}

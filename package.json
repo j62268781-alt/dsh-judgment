@@ -25,7 +25,8 @@
     "./contract": {
       "types": "./lib/contract/index.d.ts",
       "default": "./lib/contract/index.js"
-    }
+    },
+    "./client": "./lib/client.js"
   },
   "files": [
     "lib",
@@ -36,10 +37,19 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm build:host && pnpm build:client",
+    "build:host": "tsc -p tsconfig.json",
+    "build:client": "node client/esbuild.config.mjs",
     "test": "pnpm build && node --test tests/",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.contract.json",
     "verify:contract": "node scripts/verify-contract.mjs"
@@ -56,6 +66,9 @@
     "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
     "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^5.7.0"
   }
 }
