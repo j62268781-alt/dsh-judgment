@@ -112,6 +112,35 @@ test('空配置给出下一步，而不是空页面', async () => {
   assert.match(purposes, /用途（0）/)
 })
 
+test('密钥字段是密码框：不回显、关闭自动填充、显示派生出的凭据名', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm({}), entryId: 'judgment/provider', initialEditor: 'connection',
+  }))
+  // 密码框 + 不让浏览器自动填充登录密码（照模型页）。
+  // 属性名大小写不敏感：React 服务端渲染出的是 autoComplete=，浏览器解析后是 autocomplete。
+  assert.match(html, /type="password"/i)
+  assert.match(html, /autocomplete="new-password"/i)
+  // 值永远是空的：密钥不进页面状态、也不回显
+  assert.match(html, /type="password"[^>]*value=""/i)
+  // 凭据名不是用户手填的，而是按连接名派生并显示出来
+  assert.match(html, /凭据名/)
+  assert.match(html, /按连接名自动派生/)
+  // 宿主没有凭据面：锁住并说明
+  assert.match(html, /宿主未提供凭据面/)
+  assert.match(html, /无法在这里写入密钥/)
+})
+
+test('有凭据面时密钥框可输入，提示「保存后不回显」', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm({}), entryId: 'judgment/provider', initialEditor: 'connection',
+    credentials: { describe: async () => ({ ok: true, value: {} }), set: async () => ({ ok: true }), unset: async () => ({ ok: true }) },
+  }))
+  assert.match(html, /填入 API key（保存后不回显）/)
+  assert.doesNotMatch(html, /宿主未提供凭据面/)
+})
+
 test('不可写时按钮禁用并说明原因', async () => {
   const { Panel } = await loadPanel()
   const readOnly = { getSnapshot: () => ({ value: VALUE, status: 'ready' }) }

@@ -151,8 +151,9 @@ export class JudgmentService extends Service implements Judge {
       protocol: entry.protocol,
       model: entry.model,
       ...(entry.baseUrl === '' ? {} : { baseUrl: entry.baseUrl }),
-      credentialRef: entry.credentialRef,
-      credentialPresent: this.credentialPresent.get(entry.credentialRef) === true,
+      // 引用名为空表示这个连接还没有密钥：省略该字段，而不是报一个空字符串。
+      ...(entry.credentialRef === '' ? {} : { credentialRef: entry.credentialRef }),
+      credentialPresent: entry.credentialRef !== '' && this.credentialPresent.get(entry.credentialRef) === true,
     }))
 
     const purposes: PurposeStatus[] = Object.entries(this.config.purposes.get()).map(([purpose, entry]) => {

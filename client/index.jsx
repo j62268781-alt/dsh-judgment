@@ -9,17 +9,24 @@ import './react.js'
 import { findForm } from './config.js'
 import { Panel } from './panel.jsx'
 
-/** 浏览器侧需要的服务：槽位 + 配置表单。 */
-export const inject = ['slots', 'configForms']
+/** 浏览器侧需要的服务：槽位 + 配置表单 + 凭据读写面（remote.credentials）。 */
+export const inject = ['slots', 'configForms', 'remote', 'remote.credentials']
 
 export function apply(ctx) {
   // entry id 在注册时就解析一次：页面渲染时宿主不会再变。
   const { form, entryId } = findForm(ctx)
+  // 凭据面：宿主没提供就退化成只读展示（页面会说明），不让整个客户端半挂掉。
+  let credentials
+  try {
+    credentials = ctx.remote?.credentials
+  } catch {
+    credentials = undefined
+  }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'judgment',
     order: 21,
     label: () => '决策',
-    inject: () => ({ form, entryId }),
+    inject: () => ({ form, entryId, credentials }),
   }, Panel))
 }

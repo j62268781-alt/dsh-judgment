@@ -6,9 +6,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  blankConnection, connectionDraft, connectionStatus, connectionValue, dictOf, findForm,
-  matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing, validateConnection,
-  validatePurpose, withoutKey,
+  blankConnection, connectionDraft, connectionStatus, connectionValue, credentialRefFor, dictOf,
+  findForm, keyFieldState, matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing,
+  validateConnection, validateKey, validatePurpose, withoutKey,
 } from '../client/config.js'
 
 const GOOD = {
@@ -33,8 +33,7 @@ test('连接校验挡下 Host 会拒绝的每一种值', () => {
     [{ ...GOOD, baseUrl: 'https://x/y?q=1' }, '地址'],
     [{ ...GOOD, model: '' }, '模型'],
     [{ ...GOOD, model: 'a b' }, '模型'],
-    [{ ...GOOD, credentialRef: '9BAD' }, '凭据引用名'],
-    [{ ...GOOD, credentialRef: 'has-dash' }, '凭据引用名'],
+    [{ ...GOOD, name: '---' }, '连接名'],
     [{ ...GOOD, timeoutMs: 0 }, '超时'],
     [{ ...GOOD, timeoutMs: 300001 }, '超时'],
     [{ ...GOOD, timeoutMs: 1.5 }, '超时'],
@@ -55,14 +54,37 @@ test('用途名校验', () => {
   assert.ok(validatePurpose({ name: '' }) !== null)
 })
 
-test('connectionValue 去掉空白并按 schema 的字段收口', () => {
-  assert.deepEqual(connectionValue({ ...GOOD, model: ' typesafe/jev-1.13 ', baseUrl: ' https://x/y ' }), {
+test('connectionValue 去掉空白，并按 schema 的字段收口', () => {
+  assert.deepEqual(connectionValue({ ...GOOD, model: ' typesafe/jev-1.13 ', baseUrl: ' https://x/y ' }, 'typesafe-main', ''), {
     protocol: 'system-one',
     baseUrl: 'https://x/y',
     model: 'typesafe/jev-1.13',
-    credentialRef: 'TYPESAFE_API_KEY',
+    credentialRef: 'TYPESAFE_MAIN_API_KEY',
     timeoutMs: 10000,
   })
+})
+
+test('凭据引用名按连接名派生：不同连接得到不同引用名（撞车 bug 的修法）', () => {
+  assert.equal(credentialRefFor('typesafe-main'), 'TYPESAFE_MAIN_API_KEY')
+  assert.equal(credentialRefFor('luna.openai'), 'LUNA_OPENAI_API_KEY')
+  assert.equal(credentialRefFor('  9x  '), 'JUDGMENT_9X_API_KEY', '数字开头要加前缀才合法')
+  assert.equal(credentialRefFor('---'), '')
+  assert.notEqual(credentialRefFor('typesafe-main'), credentialRefFor('luna-openai'))
+})
+
+test('connectionValue 保留已存在的引用名（改名不弄丢已存的密钥）', () => {
+  const value = connectionValue(GOOD, 'renamed', 'OLD_REF_API_KEY')
+  assert.equal(value.credentialRef, 'OLD_REF_API_KEY')
+})
+
+test('密钥校验：非空 + 可打印 ASCII（照模型页的判据）', () => {
+  assert.equal(validateKey('sk-abc123'), null)
+  assert.equal(validateKey('  sk-abc123  '), null)
+  assert.ok(validateKey('') !== null)
+  assert.ok(validateKey('   ') !== null)
+  assert.ok(validateKey('has space') !== null)
+  assert.ok(validateKey('line\nbreak') !== null)
+  assert.ok(validateKey('中文字符') !== null)
 })
 
 test('withoutKey 不原地改快照', () => {
@@ -85,12 +107,21 @@ test('dictOf 只认字典', () => {
   assert.deepEqual(dictOf({}, 'connections'), {})
 })
 
-test('connectionDraft 从条目还原，缺字段有兜底', () => {
+test('connectionDraft 从条目还原；密钥框永远是空的（不回显）', () => {
   assert.deepEqual(connectionDraft('main', { protocol: 'openai-decisions', baseUrl: 'u', model: 'm', credentialRef: 'K', timeoutMs: 5 }), {
-    name: 'main', protocol: 'openai-decisions', baseUrl: 'u', model: 'm', credentialRef: 'K', timeoutMs: 5,
+    name: 'main', protocol: 'openai-decisions', baseUrl: 'u', model: 'm', timeoutMs: 5, key: '', clearKey: false,
   })
   assert.deepEqual(connectionDraft('main', undefined), {
-    name: 'main', protocol: 'system-one', baseUrl: '', model: '', credentialRef: '', timeoutMs: 10000,
+    name: 'main', protocol: 'system-one', baseUrl: '', model: '', timeoutMs: 10000, key: '', clearKey: false,
+  })
+})
+
+test('blankConnection 不含 credentialRef（否则每条连接共用同一个凭据）', () => {
+  const draft = blankConnection()
+  assert.equal('credentialRef' in draft, false)
+  assert.deepEqual(draft, {
+    name: '', protocol: 'system-one', baseUrl: GOOD.baseUrl, model: GOOD.model, timeoutMs: GOOD.timeoutMs,
+    key: '', clearKey: false,
   })
 })
 
@@ -114,10 +145,6 @@ test('findForm 按候选顺序取表单，未提供的 entry 抛错也不影响'
   assert.equal(findForm({}).form, undefined)
 })
 
-test('blankConnection 的字段与 Host 默认值一致（只有名字不同）', () => {
-  assert.deepEqual(blankConnection(), { ...GOOD, name: '' })
-})
-
 test('搜索匹配：空查询全命中，命中任一字段即可，大小写不敏感', () => {
   assert.equal(matchesQuery(['typesafe-main', 'https://api.typesafe.ai', 'typesafe/jev-1.13'], ''), true)
   assert.equal(matchesQuery(['typesafe-main'], '  '), true)
@@ -127,13 +154,36 @@ test('搜索匹配：空查询全命中，命中任一字段即可，大小写�
   assert.equal(matchesQuery([null, undefined, 42], '42'), true)
 })
 
-test('连接状态：缺哪一项就说哪一项，配齐也只说「未自检」', () => {
-  assert.equal(connectionStatus({ ...GOOD, baseUrl: '' }).text, '未设地址')
-  assert.equal(connectionStatus({ ...GOOD, model: '' }).text, '未设模型')
-  assert.equal(connectionStatus({ ...GOOD, credentialRef: '' }).text, '未设凭据引用')
-  const full = connectionStatus(GOOD)
-  assert.equal(full.tone, 'neutral')
-  assert.match(full.text, /未自检/, '本地配置完整不等于远端已验证')
+test('连接状态：缺哪一项说哪一项；密钥状态另算', () => {
+  assert.equal(connectionStatus({ ...GOOD, baseUrl: '' }, undefined).text, '未设地址')
+  assert.equal(connectionStatus({ ...GOOD, model: '' }, undefined).text, '未设模型')
+  assert.equal(connectionStatus({ ...GOOD, credentialRef: '' }, { configured: true, writable: true }).text, '未设凭据名')
+  assert.equal(connectionStatus(GOOD, undefined).text, '配置完整 · 未自检', '状态没读到时不谎报已配置')
+  assert.equal(connectionStatus(GOOD, null).text, '读不到密钥状态')
+  assert.equal(connectionStatus(GOOD, { configured: false, writable: true }).text, '密钥未配置')
+  const stored = connectionStatus(GOOD, { configured: true, writable: true })
+  assert.equal(stored.tone, 'ok')
+  assert.match(stored.text, /未自检/, '密钥已配置也不等于远端已验证')
+  assert.equal(connectionStatus(GOOD, { configured: true, writable: false, source: 'env' }).text, '密钥由环境提供')
+})
+
+test('密钥输入框：空与已配置是两句不同的话，环境只读时锁住', () => {
+  const empty = keyFieldState({ configured: false, writable: true })
+  const configured = keyFieldState({ configured: true, writable: true, source: 'stored' })
+  const locked = keyFieldState({ configured: true, writable: false, source: 'env' })
+  const loading = keyFieldState(undefined)
+  const unavailable = keyFieldState(null)
+
+  assert.notEqual(empty.placeholder, configured.placeholder)
+  assert.notEqual(empty.hint, configured.hint)
+  assert.match(empty.placeholder, /不回显/)
+  assert.match(configured.placeholder, /留空/)
+  assert.match(configured.hint, /stored/)
+  assert.equal(empty.locked, false)
+  assert.equal(locked.locked, true, '环境变量提供的密钥不能在这里改')
+  assert.match(locked.placeholder, /只读/)
+  assert.equal(loading.locked, false)
+  assert.equal(unavailable.locked, true)
 })
 
 test('用途状态：指向已配置连接 / 跟随默认 / 连接不存在 / 没得跟', () => {

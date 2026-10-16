@@ -19,8 +19,8 @@ import s from '@deepseek-ai/schemastery'
 /** 归一化后的 endpoint：不含凭据、query、hash（§12.6 的 safeUrl 纪律）。 */
 const BASE_URL = /^(?:$|https?:\/\/(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::[0-9]{1,5})?(?:\/[^?#\s]*)?)$/
 
-/** 凭据**引用名**，不是密钥值——密钥由 DSH 凭据服务保管（§13.2）。 */
-const CREDENTIAL_REF = /^[A-Za-z_][A-Za-z0-9_]*$/
+/** 凭据**引用名**，不是密钥值——密钥由 DSH 凭据服务保管（§13.2）。空 = 尚未配置。 */
+const CREDENTIAL_REF = /^(?:$|[A-Za-z_][A-Za-z0-9_]*)$/
 
 export const Config = s.object({
   connections: s.dict(s.object({
@@ -30,8 +30,12 @@ export const Config = s.object({
     baseUrl: s.string().pattern(BASE_URL).default('https://api.typesafe.ai/v1/systemone'),
     /** 必须 pin 到具体版本并记录响应快照，不要用 `jev-latest` 这类移动别名（§13.4）。 */
     model: s.string().pattern(/^\S+$/).default('typesafe/jev-1.13'),
-    /** 凭据引用名（如 `TYPESAFE_API_KEY`）；provider 每次调用现取，不缓存明文。 */
-    credentialRef: s.string().pattern(CREDENTIAL_REF).default('TYPESAFE_API_KEY'),
+    /**
+     * 凭据引用名。**默认留空**：一个写死的默认值会让多条连接共用一个引用名而互相覆盖，
+     * 所以引用名由配置页按连接名派生（`typesafe-main` → `TYPESAFE_MAIN_API_KEY`），
+     * 手写配置时也可以自己填。空字符串表示这个连接还没有密钥。
+     */
+    credentialRef: s.string().pattern(CREDENTIAL_REF).default(''),
     timeoutMs: s.number().step(1).min(1).max(300_000).default(10_000),
   })).default({}).volatile(),
 

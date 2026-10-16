@@ -9,8 +9,9 @@ import './react.js'
 import { useEffect, useState } from 'react'
 import {
   PROTOCOLS, blankConnection, blankPurpose, connectionDraft, connectionStatus, connectionValue,
-  describeConnection, dictOf, matchesQuery, purposeStatus, purposeTargetLabel, purposesUsing,
-  snapshotOf, statusOf, validateConnection, validatePurpose, withoutKey,
+  credentialRefFor, describeConnection, dictOf, keyFieldState, matchesQuery, purposeStatus,
+  purposeTargetLabel, purposesUsing, snapshotOf, statusOf, validateConnection, validateKey,
+  validatePurpose, withoutKey,
 } from './config.js'
 import { Chevron, Field, MoreMenu, SearchIcon, Status, Tag } from './components.jsx'
 import CSS from './styles.css'
@@ -22,11 +23,18 @@ export function Panel(props) {
   const [tick, setTick] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [editor, setEditor] = useState(null)
-  const [draft, setDraft] = useState(EMPTY)
+  // 首次渲染就打开某个新增表单（测试用；也让将来做深链有落点）。
+  const [editor, setEditor] = useState(props.initialEditor === 'connection' || props.initialEditor === 'purpose'
+    ? { kind: props.initialEditor, isNew: true }
+    : null)
+  const [draft, setDraft] = useState(props.initialEditor === 'connection'
+    ? blankConnection()
+    : props.initialEditor === 'purpose' ? blankPurpose() : EMPTY)
   const [expanded, setExpanded] = useState('')
   const [query, setQuery] = useState('')
   const [tab, setTab] = useState(props.initialTab === 'purposes' ? 'purposes' : 'connections')
+  /** 每个凭据引用名的状态（`describe` 的结果）：只读，永不回显密钥值。 */
+  const [keyStates, setKeyStates] = useState({})
 
   // 宿主的设置镜像变了就重画（别的编辑器/别的窗口写回也会走到这里）。
   useEffect(() => {
@@ -40,6 +48,52 @@ export function Panel(props) {
   const purposes = dictOf(value, 'purposes')
   const defaultConnection = typeof value?.defaultConnection === 'string' ? value.defaultConnection : ''
   const writable = typeof form?.set === 'function' || typeof props.mutate === 'function'
+  const credentials = props.credentials
+
+  const keyRefs = [...new Set(Object.values(connections)
+    .map((entry) => String(entry?.credentialRef ?? ''))
+    .filter((ref) => ref !== ''))]
+  const keyRefsKey = keyRefs.join('|')
+
+  // 密钥状态一次读一批。describe 只回答「有没有配置 / 来源 / 可不可写」，**永远不返回值**。
+  useEffect(() => {
+    if (credentials === undefined || keyRefsKey === '') {
+      setKeyStates({})
+      return undefined
+    }
+    let alive = true
+    void (async () => {
+      try {
+        const response = await credentials.describe(keyRefsKey.split('|'))
+        if (!alive) return
+        setKeyStates(response?.ok === true && response.value !== null && typeof response.value === 'object' ? response.value : {})
+      } catch {
+        if (alive) setKeyStates({})
+      }
+    })()
+    return () => { alive = false }
+  }, [credentials, keyRefsKey])
+
+  /** 写完密钥后刷新单个引用名的状态。 */
+  async function refreshKeys(ref) {
+    if (credentials === undefined || ref === '') return
+    try {
+      const response = await credentials.describe([ref])
+      if (response?.ok === true && response.value !== null && typeof response.value === 'object') {
+        setKeyStates((current) => ({ ...current, ...response.value }))
+      }
+    } catch {
+      // 读不到状态就不显示状态，不把它当成"未配置"。
+    }
+  }
+
+  /** 正在编辑的这条连接最终用哪个引用名：已存在的不变，新建的按连接名派生。 */
+  const draftPreviousRef = editor?.isNew === true ? '' : String(connections[editor?.id]?.credentialRef ?? '')
+  const draftRef = draftPreviousRef !== '' ? draftPreviousRef : credentialRefFor(String(draft.name ?? '').trim())
+  const draftKeyState = credentials === undefined
+    ? null
+    : keyRefs.includes(draftRef) ? keyStates[draftRef] : { configured: false }
+  const draftKeyField = keyFieldState(draftKeyState)
 
   /** 正在编辑的那一条：过滤时也要留着，否则保存前表单会被搜掉。 */
   const editingConnection = editor?.kind === 'connection' && editor.isNew !== true ? editor.id : undefined
@@ -93,12 +147,46 @@ export function Panel(props) {
       setError(message)
       return
     }
+    const key = String(draft.key ?? '').trim()
+    // 密钥先校验再落配置：配置写成功而密钥被拒，留下的会是一条配了却用不了的状态。
+    if (key !== '') {
+      const invalid = validateKey(key)
+      if (invalid !== null) {
+        setError(invalid)
+        return
+      }
+    }
     const name = String(draft.name).trim()
     if (editor?.isNew === true && connections[name] !== undefined) {
       setError(`连接 "${name}" 已经存在`)
       return
     }
-    if (await commit('connections', { ...connections, [name]: connectionValue(draft) })) closeEditor()
+    const previousRef = editor?.isNew === true ? '' : String(connections[name]?.credentialRef ?? '')
+    const entry = connectionValue(draft, name, previousRef)
+    // 配置先落盘、再写密钥——与模型页的两段式一致（配置没写成就别动凭据）。
+    if (!(await commit('connections', { ...connections, [name]: entry }))) return
+    if (credentials === undefined || (key === '' && draft.clearKey !== true)) {
+      closeEditor()
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const response = key !== ''
+        ? await credentials.set(entry.credentialRef, key)
+        : await credentials.unset(entry.credentialRef)
+      if (response?.ok !== true) {
+        setError(`密钥未写入：${response?.error?.message ?? '未知原因'}`)
+        return
+      }
+    } catch (cause) {
+      setError(`密钥未写入：${String(cause?.message ?? cause)}`)
+      return
+    } finally {
+      setBusy(false)
+    }
+    await refreshKeys(entry.credentialRef)
+    closeEditor()
   }
 
   async function savePurpose() {
@@ -154,7 +242,8 @@ export function Panel(props) {
     const entry = connections[id] ?? {}
     const key = `connection:${id}`
     const open = expanded === key
-    const state = connectionStatus(entry)
+    const ref = String(entry.credentialRef ?? '')
+    const state = connectionStatus(entry, ref === '' ? null : keyStates[ref])
     return (
       <li className="jdg-card" key={key}>
         <div className="jdg-cardRow">
@@ -189,8 +278,10 @@ export function Panel(props) {
               <span className="jdg-detailsValue">{entry.baseUrl || '—'}</span>
               <span className="jdg-detailsKey">模型</span>
               <span className="jdg-detailsValue">{entry.model || '—'}</span>
-              <span className="jdg-detailsKey">凭据引用</span>
-              <span className="jdg-detailsValue">{entry.credentialRef || '—'}</span>
+              <span className="jdg-detailsKey">凭据名</span>
+              <span className="jdg-detailsValue">{ref || '—（按连接名派生）'}</span>
+              <span className="jdg-detailsKey">密钥</span>
+              <span className="jdg-detailsValue">{state.text}</span>
               <span className="jdg-detailsKey">超时</span>
               <span className="jdg-detailsValue">{`${entry.timeoutMs ?? '—'} ms`}</span>
               <span className="jdg-detailsKey">被引用</span>
@@ -240,12 +331,15 @@ export function Panel(props) {
               onChange={(event) => setDraft({ ...draft, model: event.target.value })}
             />
           </Field>
-          <Field label="凭据引用名" hint="密钥值不写进配置，只存这个名字">
+          <Field label="密钥" wide hint={`${draftKeyField.hint} · 凭据名 ${draftRef || '（连接名里需要一个字母或数字）'}`}>
             <input
               className="jdg-input"
-              value={draft.credentialRef ?? ''}
-              placeholder="TYPESAFE_API_KEY"
-              onChange={(event) => setDraft({ ...draft, credentialRef: event.target.value })}
+              type="password"
+              autoComplete="new-password"
+              value={draft.key ?? ''}
+              placeholder={draftKeyField.placeholder}
+              disabled={busy || draftKeyField.locked}
+              onChange={(event) => setDraft({ ...draft, key: event.target.value, clearKey: false })}
             />
           </Field>
           <Field label="超时（ms）">
@@ -261,13 +355,24 @@ export function Panel(props) {
           </Field>
         </div>
         <p className="jdg-note">
-          密钥由 DSH 凭据服务保管：为上面这个引用名设值（或先导出同名环境变量），provider 每次调用现取，绝不缓存明文。
+          {`密钥写进 DSH 凭据服务（引用名 ${draftRef || '—'}，按连接名自动派生），不写进配置、保存后不回显。`}
+          {draft.clearKey ? ' 保存后会清除这个凭据。' : ''}
         </p>
         <div className="jdg-actionsRow">
           <button className="jdg-button" data-variant="primary" disabled={busy} onClick={() => { void saveConnection() }}>
             {busy ? '保存中…' : '保存'}
           </button>
           <button className="jdg-button" data-variant="outline" disabled={busy} onClick={closeEditor}>取消</button>
+          {draftKeyField.locked === false && draftKeyState?.configured === true ? (
+            <button
+              className="jdg-button"
+              data-variant="outline"
+              disabled={busy}
+              onClick={() => setDraft({ ...draft, key: '', clearKey: true })}
+            >
+              清除密钥
+            </button>
+          ) : null}
         </div>
       </li>
     )

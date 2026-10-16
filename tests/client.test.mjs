@@ -36,7 +36,7 @@ test('产物是 ModuleLoader 交接形状，且导出 inject / apply', async () 
   assert.equal(spec.id, 'dsh-judgment')
   assert.equal(typeof spec.factory, 'function')
   const module = spec.factory(hostRequire)
-  assert.deepEqual(module.inject, ['slots', 'configForms'])
+  assert.deepEqual(module.inject, ['slots', 'configForms', 'remote', 'remote.credentials'])
   assert.equal(typeof module.apply, 'function')
 })
 
