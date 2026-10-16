@@ -117,7 +117,8 @@ export interface ChoiceQuestion {
 
 /**
  * `score`：在 2–10 个**有序**级别上打分。
- * 答案是级别序号 + 完整概率分布；级别序号即 `levels` 的下标，分布键为其十进制字符串。
+ * 答案是级别位置 + 完整概率分布；位置 ∈ [0, `levels.length`−1]（**可为小数**），
+ * 分布键为级别下标的十进制字符串。
  */
 export interface ScoreQuestion {
   readonly kind: 'score'
@@ -194,7 +195,15 @@ export interface ChoiceAnswer extends AnswerSignals {
   readonly probabilities: NormalizedDistribution<ChoiceOptionId>
 }
 
-/** `score` 答案：级别序号（∈ [0, levels.length−1]）+ 完整分布。 */
+/**
+ * `score` 答案：级别位置 + 完整分布。
+ *
+ * `value` 是**协议自报的位置**，实测等于级别分布的期望值 `Σ i·p_i`
+ * （P0′ 探针：3 级时 0×0.45+1×0.26+2×0.29 = 0.84；4 级时 0×0.19+1×0.33+2×0.36+3×0.12 = 1.41，
+ * 响应分别为 0.84 / 1.42）。所以它**可以是小数**，∈ [0, `levels.length`−1]，
+ * **不保证是整数下标**——需要离散级别时请用 `probabilities` 的众数或自己定取整规则；
+ * provider 绝不四舍五入（取整就是替消费者"修复"，§2.5）。
+ */
 export interface ScoreAnswer extends AnswerSignals {
   readonly kind: 'score'
   readonly value: number
@@ -276,6 +285,8 @@ export type ValidationRule =
   | 'score-arity'
   /** 答案键集合与问题键集合完全一致（缺 = 非法，不修复）。 */
   | 'answer-set-equality'
+  /** 某个答案的结构与它的问题原语不匹配（类型、必备字段、取值域如 score 越出级别范围）。 */
+  | 'answer-shape'
   /** 每个概率都是有限数且 ∈ [0,1]。 */
   | 'probability-range'
   /** 分布覆盖全部候选/级别，不多不少。 */
@@ -531,6 +542,10 @@ export interface ConnectionStatus {
   readonly baseUrl?: string
   readonly credentialRef?: string
   readonly credentialPresent: boolean
+  /** 最近一次 `health()` 探测**成功**过这条连接（本地记忆，不是实时探测）。 */
+  readonly verified?: boolean
+  /** 上面那次成功的时刻（ISO 8601）。 */
+  readonly verifiedAt?: string
 }
 
 /** 单个用途的可见状态。`usable` 为 false 时必须给出 {@link failure}。 */
