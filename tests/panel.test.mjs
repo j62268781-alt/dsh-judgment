@@ -54,19 +54,19 @@ const VALUE = {
   defaultConnection: 'typesafe-main',
 }
 
-test('页面把连接与用途画成列表（对齐 skills-mcp 的卡片布局）', async () => {
+test('默认页签（连接）画出页签条、搜索行与连接卡片', async () => {
   const { Panel } = await loadPanel()
   const html = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm(VALUE), entryId: 'judgment/provider' }))
 
   assert.match(html, />决策<\/h2>/)
-  // 页面摘要 + 搜索行 + 两个新增入口
-  assert.match(html, /共 1 条连接 · 1 个用途/)
-  assert.match(html, /搜索连接名 \/ 地址 \/ 模型 \/ 用途名/)
+  // 页签条：标签带计数（全角括号），当前页签标记 active
+  assert.match(html, /class="jdg-tabs"/)
+  assert.match(html, /data-active="true">连接（1）</)
+  assert.match(html, /data-active="false">用途（1）</)
+  // 当前页签的摘要 + 搜索行 + 主操作
+  assert.match(html, /共 1 条 · 每条 = （协议 · 地址 · 模型 · 凭据引用）/)
+  assert.match(html, /搜索连接名 \/ 地址 \/ 模型/)
   assert.match(html, /新增连接/)
-  assert.match(html, /新增用途/)
-  // 分区标题带计数
-  assert.match(html, /连接 \(1\)/)
-  assert.match(html, /用途 \(1\)/)
   // 连接卡片：箭头 + 名字 + 协议标签 + 右侧状态 + 副标题
   // （断言 class 属性而不是类名——注入的 CSS 文本里也会出现这些类名）
   assert.match(html, /class="jdg-chevron"/)
@@ -75,20 +75,41 @@ test('页面把连接与用途画成列表（对齐 skills-mcp 的卡片布局�
   assert.match(html, /配置完整 · 未自检/)
   assert.match(html, /https:\/\/api\.typesafe\.ai\/v1\/systemone/)
   assert.match(html, /typesafe\/jev-1\.13/)
-  // 用途卡片：名字 + 指向 + 右侧状态
-  assert.match(html, /mobile\.action/)
-  assert.match(html, /指向已配置连接/)
-  assert.match(html, /默认连接/)
+  // 没被选中的页签不渲染：不该出现用途卡片、用途搜索框或用途空态
+  assert.doesNotMatch(html, /mobile\.action/)
+  assert.doesNotMatch(html, /还没有用途/)
+  assert.doesNotMatch(html, /搜索用途名/)
   // 默认收起：详情表不渲染（展开才出现）
   assert.doesNotMatch(html, /class="jdg-cardDetails"/)
 })
 
+test('用途页签画出用途卡片与「默认连接」行', async () => {
+  const { Panel } = await loadPanel()
+  const html = renderToStaticMarkup(React.createElement(Panel, {
+    form: fakeForm(VALUE), entryId: 'judgment/provider', initialTab: 'purposes',
+  }))
+
+  assert.match(html, /data-active="true">用途（1）</)
+  assert.match(html, /共 1 个 · 给消费者一个稳定名字/)
+  assert.match(html, /搜索用途名 \/ 指向连接/)
+  assert.match(html, /新增用途/)
+  // 用途卡片：名字 + 指向标签 + 右侧状态
+  assert.match(html, /mobile\.action/)
+  assert.match(html, /指向已配置连接/)
+  // 「默认连接」只在用途页出现（用途卡片上的「跟随默认连接」说的就是它）
+  assert.match(html, /未指定连接的用途落到/)
+  assert.doesNotMatch(html, /搜索连接名/)
+})
+
 test('空配置给出下一步，而不是空页面', async () => {
   const { Panel } = await loadPanel()
-  const html = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm({}), entryId: 'judgment/provider' }))
-  assert.match(html, /还没有连接/)
-  assert.match(html, /还没有用途/)
-  assert.match(html, /共 0 条/)
+  const connections = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm({}), entryId: 'judgment/provider' }))
+  assert.match(connections, /还没有连接/)
+  assert.match(connections, /连接（0）/)
+
+  const purposes = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm({}), entryId: 'judgment/provider', initialTab: 'purposes' }))
+  assert.match(purposes, /还没有用途/)
+  assert.match(purposes, /用途（0）/)
 })
 
 test('不可写时按钮禁用并说明原因', async () => {
@@ -111,5 +132,6 @@ test('样式随页面注入，且类名不与他插件共用', async () => {
   const html = renderToStaticMarkup(React.createElement(Panel, { form: fakeForm(VALUE), entryId: 'judgment/provider' }))
   assert.match(html, /jdg-page/)
   assert.match(html, /\.jdg-card\{/)
+  assert.match(html, /\.jdg-tab\[data-active=true\]/)
   assert.doesNotMatch(html, /\.smp-/, '不能复用 skills-mcp 面板的类名')
 })

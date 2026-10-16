@@ -26,6 +26,7 @@ export function Panel(props) {
   const [draft, setDraft] = useState(EMPTY)
   const [expanded, setExpanded] = useState('')
   const [query, setQuery] = useState('')
+  const [tab, setTab] = useState(props.initialTab === 'purposes' ? 'purposes' : 'connections')
 
   // 宿主的设置镜像变了就重画（别的编辑器/别的窗口写回也会走到这里）。
   useEffect(() => {
@@ -134,6 +135,17 @@ export function Panel(props) {
 
   function toggle(key) {
     setExpanded((current) => (current === key ? '' : key))
+  }
+
+  /** 换页签时的重置照面板的做法：收起展开行、关掉就地编辑器、清搜索与错误。 */
+  function selectTab(next) {
+    if (next === tab) return
+    setTab(next)
+    setExpanded('')
+    setEditor(null)
+    setDraft(EMPTY)
+    setQuery('')
+    setError('')
   }
 
   /* ─────────────────── 连接 ─────────────────── */
@@ -362,22 +374,29 @@ export function Panel(props) {
     ...purposeIds.map((name) => (editingPurpose === name ? purposeForm() : purposeCard(name))),
   ]
 
-  const sections = [
-    {
-      key: 'connections',
-      title: `连接 (${Object.keys(connections).length})`,
-      summary: '每条 = （协议 · 地址 · 模型 · 凭据引用）；密钥值不在配置里，只存引用名',
+  const connectionCount = Object.keys(connections).length
+  const purposeCount = Object.keys(purposes).length
+
+  /** 两个页签的文案与列表，形状对齐 skills-mcp 面板（页签标签带计数）。 */
+  const lists = {
+    connections: {
+      tab: `连接（${connectionCount}）`,
+      summary: `共 ${connectionCount} 条 · 每条 = （协议 · 地址 · 模型 · 凭据引用）；密钥值不在配置里，只存引用名`,
+      placeholder: '搜索连接名 / 地址 / 模型',
+      addLabel: '新增连接',
       empty: '还没有连接。一条连接就是一组「协议 + 地址 + 模型 + 凭据引用」。',
       cards: connectionCards,
     },
-    {
-      key: 'purposes',
-      title: `用途 (${Object.keys(purposes).length})`,
-      summary: '给消费者一个稳定名字：代码里只写用途名，换连接 / 换模型 / 换密钥都不用改代码',
+    purposes: {
+      tab: `用途（${purposeCount}）`,
+      summary: `共 ${purposeCount} 个 · 给消费者一个稳定名字：代码里只写用途名，换连接 / 换模型 / 换密钥都不用改代码`,
+      placeholder: '搜索用途名 / 指向连接',
+      addLabel: '新增用途',
       empty: '还没有用途。消费者用用途名要能力（例如 mobile.action），在这里把它指向一条连接。',
       cards: purposeCards,
     },
-  ]
+  }
+  const active = lists[tab] ?? lists.connections
 
   void tick
 
@@ -393,9 +412,15 @@ export function Panel(props) {
         </div>
       </header>
 
-      <div className="jdg-summary">
-        {`共 ${Object.keys(connections).length} 条连接 · ${Object.keys(purposes).length} 个用途 · 增删改保存后立即生效`}
+      <div className="jdg-tabs">
+        {Object.entries(lists).map(([id, list]) => (
+          <button type="button" key={id} className="jdg-tab" data-active={tab === id} onClick={() => selectTab(id)}>
+            {list.tab}
+          </button>
+        ))}
       </div>
+
+      <div className="jdg-summary">{active.summary}</div>
 
       <div className="jdg-filterRow">
         <span className="jdg-search">
@@ -403,15 +428,17 @@ export function Panel(props) {
           <input
             className="jdg-searchInput"
             value={query}
-            placeholder="搜索连接名 / 地址 / 模型 / 用途名"
+            placeholder={active.placeholder}
             onChange={(event) => setQuery(event.target.value)}
           />
         </span>
-        <button className="jdg-button" data-variant="primary" disabled={busy || !writable} onClick={() => openCreate('connection')}>
-          新增连接
-        </button>
-        <button className="jdg-button" data-variant="outline" disabled={busy || !writable} onClick={() => openCreate('purpose')}>
-          新增用途
+        <button
+          className="jdg-button"
+          data-variant="primary"
+          disabled={busy || !writable}
+          onClick={() => openCreate(tab === 'connections' ? 'connection' : 'purpose')}
+        >
+          {active.addLabel}
         </button>
       </div>
 
@@ -419,32 +446,27 @@ export function Panel(props) {
       {writable ? null : <p className="jdg-note">当前设置文档不可写：这个 profile 里该插件的配置被更高层覆盖了。</p>}
       {error !== '' ? <p className="jdg-error">{error}</p> : null}
 
-      <div className="jdg-inlineRow">
-        <span className="jdg-label">默认连接</span>
-        <select
-          className="jdg-select"
-          value={defaultConnection}
-          disabled={busy || !writable}
-          onChange={(event) => { void commit('defaultConnection', event.target.value) }}
-        >
-          <option value="">未设置 —— 只配了一条连接时用那一条，否则调用必须给用途名</option>
-          {Object.keys(connections).map((id) => <option key={id} value={id}>{id}</option>)}
-        </select>
-      </div>
+      {/* 「默认连接」放在用途页：用途卡片上的「跟随默认连接」说的就是它。 */}
+      {tab === 'purposes' ? (
+        <div className="jdg-inlineRow">
+          <span className="jdg-label">未指定连接的用途落到</span>
+          <select
+            className="jdg-select"
+            value={defaultConnection}
+            disabled={busy || !writable}
+            onChange={(event) => { void commit('defaultConnection', event.target.value) }}
+          >
+            <option value="">未设置 —— 只配了一条连接时用那一条，否则调用必须给用途名</option>
+            {Object.keys(connections).map((id) => <option key={id} value={id}>{id}</option>)}
+          </select>
+        </div>
+      ) : null}
 
-      {sections.map((section) => (
-        <section className="jdg-group" key={section.key}>
-          <div className="jdg-groupTitleRow">
-            <span className="jdg-groupTitle">{section.title}</span>
-          </div>
-          <div className="jdg-groupSub">{section.summary}</div>
-          <ul className="jdg-cards">
-            {section.cards.length === 0
-              ? <li className="jdg-empty">{query === '' ? section.empty : '没有匹配的条目。'}</li>
-              : section.cards}
-          </ul>
-        </section>
-      ))}
+      <ul className="jdg-cards">
+        {active.cards.length === 0
+          ? <li className="jdg-empty">{query === '' ? active.empty : '没有匹配的条目。'}</li>
+          : active.cards}
+      </ul>
     </div>
   )
 }

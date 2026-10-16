@@ -9,7 +9,7 @@
 .jdg-pageHead{box-sizing:border-box;justify-content:space-between;align-items:flex-start;gap:16px;display:flex}
 .jdg-pageTitle{margin:0;font-size:18px;font-weight:500;line-height:26px}
 .jdg-pageIntro{color:var(--dsw-alias-label-secondary);margin:4px 0 0;font-size:13px;line-height:20px}
-.jdg-summary{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:-6px 0 0}
+.jdg-summary{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;margin:0}
 
 /* 搜索行：搜索框 + 主操作。与面板的 filterRow 同形。 */
 .jdg-filterRow{display:flex;align-items:center;gap:8px}
@@ -24,11 +24,11 @@
 .jdg-inlineRow .jdg-label{flex:none;white-space:nowrap}
 .jdg-inlineRow .jdg-select{flex:1 1 auto;min-width:0}
 
-.jdg-group{flex-direction:column;gap:10px;display:flex;border-top:.5px solid var(--dsw-alias-border-l2);padding-top:14px}
-.jdg-group:first-of-type{border-top:0;padding-top:0}
-.jdg-groupTitleRow{align-items:center;gap:8px;min-height:36px;display:flex}
-.jdg-groupTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
-.jdg-groupSub{color:var(--dsw-alias-label-tertiary);flex-wrap:wrap;row-gap:4px;margin:-6px 0 0;font-size:12px;line-height:18px;display:flex}
+/* 页签条：与 skills-mcp 面板同一形态（下边框 + 选中项 2px 下划线）。 */
+.jdg-tabs{display:flex;gap:24px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
+.jdg-tab{appearance:none;background:none;border:0;padding:0 2px 10px;font:inherit;font-size:14px;line-height:22px;color:var(--dsw-alias-label-tertiary);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.jdg-tab[data-active=true]{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-label-primary)}
+.jdg-tab:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
 
 /* 卡片：左列是「箭头 + 标题」，右列是状态与操作；展开体在行之外占满整宽。 */
 .jdg-cards{flex-direction:column;gap:14px;margin:0;padding:0;list-style:none;display:flex}
