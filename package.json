@@ -69,11 +69,11 @@
     "@deepseek-ai/dsh-typert-protocol": ">=0.2.0-rc.2"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@deepseek-ai/cosmokit": "1.8.5",
-    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "3.18.4",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/cosmokit": "1.8.6",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.1",
+    "@deepseek-ai/schemastery": "3.18.5",
     "@types/node": "^22.10.0",
     "esbuild": "^0.25.0",
     "react": "^19.3.1",

@@ -56,7 +56,10 @@ test('devDependencies 允许钉精确版本（构建可复现），但版本要�
     // 只做形状检查：dev 的精确版本不能明显违反 peer 的最低要求（例如 peer >=0.2.0 而 dev 是 0.1.x）。
     const floor = /^>=\s*v?(\d+)\.(\d+)\.(\d+)/.exec(range)
     if (floor === null) continue
-    const [major, minor, patch] = /^v?(\d+)\.(\d+)\.(\d+)/.exec(pinned)?.slice(1).map(Number) ?? []
+    // `file:` / `link:` / `workspace:` / git 等是路径或源码 spec，不是版本，不在本测试范围内。
+    const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(pinned)
+    if (match === null) continue
+    const [major, minor, patch] = match.slice(1).map(Number)
     const [fMajor, fMinor, fPatch] = floor.slice(1).map(Number)
     const atLeast = major > fMajor
       || (major === fMajor && (minor > fMinor || (minor === fMinor && patch >= fPatch)))
