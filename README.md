@@ -46,6 +46,7 @@
 | `ask()` 批量判断 · `health()` 远端自检 | ✅ **已跑通**（SystemOne，真端点实测 500ms 量级） |
 | 两套协议：`system-one`（`noul`）· `openai-decisions`（`predicate`） | ✅ system-one 真网实测；openai-decisions 按上游实现写好、**尚未对着真端点验证** |
 | 严格校验：答案集合一致 / 分布完整 / 归一化 0.02 / argmax 1e-6 / 模型名快照 | ✅ 已实现，**失败即拒不修复**（两套协议共用同一份容差） |
+| 校验失败的结构化定位（规则 + 候选数 + Σp + 容差）· 并记进 ledger | ✅ 已实现（消费者据此**确定性**决定缩多少候选重采） |
 | 审计 ledger（发包前落库）· 逐小时配额（连接层 / 用途层）· 计量 | ✅ 已实现；落盘失败**不阻断判断**（只记日志） |
 | 工具面（`judgment/llm-face`，可选组件） | ⏳ 未实现（默认关） |
 
@@ -163,6 +164,62 @@ if (now !== result.fingerprint) return 'stale_state'
 `import type` 之后编译期就被擦除，**运行期不引入本插件的任何代码**。
 它固定了 `Judge` 接口、三种问题原语、答案形状、校验容差与 `JudgmentError` 的形状——
 provider 实现、第三方替换、`HostModelJudge` 兜底都按它对齐。
+
+### 用途预设：`browser.action`
+
+"动作域"消费者的推荐配置（预设名来自 `dsh-agent-browser` 的实测校准）：
+
+```yaml
+purposes:
+  browser.action: { connection: typesafe-main }
+```
+
+**候选数建议 ≤ 16**。同一目标各采样 6 次（`decision-model-preview`，紧凑状态 ~2.9k tokens）：
+
+| 候选上限 | 命中率 | 严格校验拒绝率 | tokens/次 |
+|---|---:|---:|---:|
+| 10 | 5/5 | 0/6 | 2,879 |
+| 16 | 4/5 | 0/6 | 3,026 |
+| 40 | 3/5 | **6/6** | 3,689 |
+
+模型在候选多时**系统性欠归一**（实测 Σp = 0.95–0.98，与候选数正相关），会撞上
+`distribution-normalized`。这**不是放宽容差的理由**（放宽等于"修复答案"、等于用猜测
+覆盖证据），而是**消费者该缩候选**的理由。延迟参考：单次 `ask` 210–350 ms。
+
+### 校验失败长什么样（供消费者**确定性**决策）
+
+```ts
+try {
+  await judge.ask(state, questions, { purpose: 'browser.action' })
+} catch (error) {
+  if (error instanceof JudgmentError && error.code === 'invalid-response') {
+    const { rule, questionId, optionCount, sum, tolerance } = error.validation ?? {}
+    // 例：缩到一半重采。重采 = 新采样，是消费者的决定；provider 不重试。
+    const nextCap = optionCount === undefined ? 16 : Math.max(4, Math.floor(optionCount / 2))
+  }
+}
+```
+
+`rule` 是七条校验规则之一；`optionCount` / `sum` / `tolerance` 是**数字**
+（能确定时才给，不知道就不编——`distribution-complete` 不含 `sum`）。
+所以消费者不必从 `message` 里正则抠数字。**容差请运行期读 `tolerance`**，不要写死：
+它是契约定稿，但契约升版时可能变。
+
+这些数值也会记进审计 ledger（`validationSum` / `validationOptionCount`），
+于是"候选越多、Σp 越欠归一"这类校准可以**从账本复算**，不靠手记。
+
+### 关于 `HostModelJudge`：为什么本插件不内置
+
+契约里描述了它（实现同一个 `Judge` 的"宿主模型兜底"，没有 Jev 连接时降级）。
+它**归属消费者侧**，不在 provider 内，理由两条：
+
+1. 它消耗主模型 token，会改变本插件"判断层不花主模型 token"的定位，必须是消费者显式 opt-in；
+2. 它需要 `ctx.llm`——provider 一旦依赖主模型，就不再是"零工具的纯能力提供者"。
+
+所以做法是：消费者自己写一个约百行的 `Judge`（`ask` 里调主模型，把分布喂给**同一套校验语义**，
+失败即拒），`ProtocolId` 里已留 `'host-model'` 以便账本溯源。需要复用校验核心的话，
+`src/provider/wire.ts`（MIT）可以直接 vendored 过去。
+如果确实想要官方维护，那也应该是一个**单独的 opt-in 包**，而不是塞进本插件。
 
 ---
 

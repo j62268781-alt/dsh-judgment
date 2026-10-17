@@ -51,6 +51,7 @@ the natural way to write it, and it costs an order and a half of magnitude more.
 | `ask()` batched judgment · `health()` remote self-check | ✅ **working** (SystemOne; measured against a real endpoint at ~500 ms) |
 | Two protocols: `system-one` (`noul`) · `openai-decisions` (`predicate`) | ✅ system-one verified live; openai-decisions implemented from the upstream reference but **not yet verified against a real endpoint** |
 | Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** (both protocols share one set of tolerances) |
+| Structured validation detail (rule + candidate count + Σp + tolerance) · also recorded in the ledger | ✅ implemented (consumers decide **deterministically** how far to shrink before re-sampling) |
 | Audit ledger (written before dispatch) · hourly quotas (per connection / per purpose) · metering | ✅ implemented; a failed ledger write **never blocks** a judgment (it logs) |
 | Tool face (`judgment/llm-face`, optional component) | ⏳ not implemented (off by default) |
 
@@ -180,6 +181,72 @@ values. With `import type` it is erased at compile time, so **nothing of this pl
 runtime**. It pins the `Judge` interface, the three primitives, the answer shapes, the validation
 tolerances, and the shape of `JudgmentError` — provider implementations, third-party
 replacements, and the `HostModelJudge` fallback all align to it.
+
+### Purpose preset: `browser.action`
+
+The recommended configuration for "action domain" consumers (the preset name comes from
+`dsh-agent-browser`'s live calibration):
+
+```yaml
+purposes:
+  browser.action: { connection: typesafe-main }
+```
+
+**Keep candidate counts at or below 16.** Six samples per target
+(`decision-model-preview`, compact state ~2.9k tokens):
+
+| Candidate cap | Hit rate | Strict-validation rejection | tokens/call |
+|---|---:|---:|---:|
+| 10 | 5/5 | 0/6 | 2,879 |
+| 16 | 4/5 | 0/6 | 3,026 |
+| 40 | 3/5 | **6/6** | 3,689 |
+
+With many candidates the model **systematically under-normalizes** (measured Σp = 0.95–0.98,
+positively correlated with candidate count) and trips `distribution-normalized`. That is
+**not** a reason to loosen the tolerance — loosening means "repairing the answer", replacing
+evidence with a guess — it is a reason for the **consumer** to shrink candidates. Latency
+reference: a single `ask` takes 210–350 ms.
+
+### What a validation failure looks like (deterministic consumer decisions)
+
+```ts
+try {
+  await judge.ask(state, questions, { purpose: 'browser.action' })
+} catch (error) {
+  if (error instanceof JudgmentError && error.code === 'invalid-response') {
+    const { rule, questionId, optionCount, sum, tolerance } = error.validation ?? {}
+    // e.g. retry with half the candidates. Re-sampling is the consumer's decision; the
+    // provider never retries on its own.
+    const nextCap = optionCount === undefined ? 16 : Math.max(4, Math.floor(optionCount / 2))
+  }
+}
+```
+
+`rule` is one of the seven validation rules; `optionCount` / `sum` / `tolerance` are
+**numbers** (present only when determinable — nothing is invented, e.g. `distribution-complete`
+carries no `sum`). So consumers never have to scrape numbers out of `message`. Read
+`tolerance` **at runtime**; do not hard-code it — it is fixed by the contract but may change
+across contract versions.
+
+Those numbers are also written to the audit ledger (`validationSum` / `validationOptionCount`),
+so calibrations like "more candidates, worse normalization" can be **recomputed from the
+ledger** instead of taken on faith.
+
+### On `HostModelJudge`: why this plugin does not ship it
+
+The contract describes it (a host-model fallback implementing the same `Judge` for when there
+is no Jev connection). It belongs on the **consumer** side, for two reasons:
+
+1. It spends main-model tokens, which changes this plugin's "judgment layer costs no
+   main-model tokens" positioning — it must be an explicit consumer opt-in;
+2. It needs `ctx.llm` — once the provider depends on the host model it is no longer a
+   zero-tool capability provider.
+
+So the recipe is: write a ~100-line `Judge` yourself (call the host model inside `ask`, feed the
+distribution through **the same validation semantics**, reject instead of repairing).
+`ProtocolId` already reserves `'host-model'` for ledger provenance. To reuse the validation
+core, `src/provider/wire.ts` (MIT) can be vendored. If an official implementation is wanted,
+it should be a **separate opt-in package**, not part of this plugin.
 
 ---
 
