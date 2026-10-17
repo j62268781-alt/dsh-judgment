@@ -52,6 +52,12 @@ export interface LedgerSettle {
   readonly outputTokens?: number
   readonly errorCode?: string
   readonly validationRule?: string
+  /**
+   * 校验失败时的实测数值。记进账是为了**校准可复算**：
+   * "Σp 与候选数正相关"这类结论应该能从 ledger 直接算出来，而不是靠手记一遍。
+   */
+  readonly validationSum?: number
+  readonly validationOptionCount?: number
   /** 声明的预算事后被超出（token / 成本只能事后比，见 README 的诚实说明）。 */
   readonly budgetExceeded?: boolean
 }

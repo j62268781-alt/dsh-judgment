@@ -484,16 +484,20 @@ export class JudgmentService extends TypertRemoteService implements Judge {
     return this.ledger
   }
 
-  /** 失败也要在账上留一笔（含类型化失败的代码与校验规则）。 */
+  /** 失败也要在账上留一笔（含类型化失败的代码与校验规则、以及校验的实测数值）。 */
   private async settleFailure(ledger: Ledger, id: string, started: number, error: unknown): Promise<void> {
     const failure = failureOf(error)
+    const validation = failure.validation
     await ledger.settle({
       id,
       at: new Date().toISOString(),
       outcome: 'error',
       latencyMs: Date.now() - started,
       errorCode: failure.code,
-      ...(failure.validation === undefined ? {} : { validationRule: failure.validation.rule }),
+      ...(validation === undefined ? {} : { validationRule: validation.rule }),
+      // 数值也记：这样"候选越多、Σp 越欠归一"这类校准能从账本复算，不靠手记。
+      ...(validation?.sum === undefined ? {} : { validationSum: validation.sum }),
+      ...(validation?.optionCount === undefined ? {} : { validationOptionCount: validation.optionCount }),
     })
   }
 

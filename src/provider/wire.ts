@@ -56,8 +56,30 @@ export function isProbability(value: unknown): value is Probability {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
 }
 
-export function reject(rule: ValidationRule, detail: string, questionId?: string): never {
-  throw new ResponseRejected({ rule, detail, ...(questionId === undefined ? {} : { questionId }) })
+/**
+ * 可选的结构化数值，随 {@link ValidationFailure} 一起交给消费者。
+ *
+ * 为什么不只给字符串：消费者要做的是**确定性决策**（缩到多少候选重采），
+ * 从 `detail` 里正则抠数字既脆又等价于让每个消费者各写一份解析。
+ */
+export interface ValidationNumbers {
+  readonly optionCount?: number
+  readonly sum?: number
+  readonly tolerance?: number
+}
+
+export function reject(
+  rule: ValidationRule,
+  detail: string,
+  questionId?: string,
+  numbers?: ValidationNumbers,
+): never {
+  throw new ResponseRejected({
+    rule,
+    detail,
+    ...(questionId === undefined ? {} : { questionId }),
+    ...(numbers === undefined ? {} : numbers),
+  })
 }
 
 /**
@@ -72,8 +94,14 @@ export function validateDistribution(
   questionId: string,
   argmaxOf?: string,
 ): Record<string, number> {
+  const optionCount = allowed.length
   if (values.size !== allowed.length || allowed.some((key) => !values.has(key))) {
-    reject('distribution-complete', `答案 "${questionId}" 的分布键集合与候选集合不一致`, questionId)
+    reject(
+      'distribution-complete',
+      `答案 "${questionId}" 的分布键集合与候选集合不一致`,
+      questionId,
+      { optionCount },
+    )
   }
 
   let sum = 0
@@ -82,7 +110,12 @@ export function validateDistribution(
   for (const key of allowed) {
     const chance = values.get(key)
     if (!isProbability(chance)) {
-      reject('probability-range', `答案 "${questionId}" 的 "${key}" 不是 [0,1] 内的有限数`, questionId)
+      reject(
+        'probability-range',
+        `答案 "${questionId}" 的 "${key}" 不是 [0,1] 内的有限数`,
+        questionId,
+        { optionCount },
+      )
     }
     result[key] = chance
     sum += chance
@@ -90,10 +123,15 @@ export function validateDistribution(
   }
 
   if (Math.abs(sum - 1) > NORMALIZATION_TOLERANCE) {
-    reject('distribution-normalized', `答案 "${questionId}" 的概率和 ${sum} 偏离 1 超过容差 ${NORMALIZATION_TOLERANCE}`, questionId)
+    reject(
+      'distribution-normalized',
+      `答案 "${questionId}" 的概率和 ${sum} 偏离 1 超过容差 ${NORMALIZATION_TOLERANCE}`,
+      questionId,
+      { optionCount, sum, tolerance: NORMALIZATION_TOLERANCE },
+    )
   }
   if (argmaxOf !== undefined && result[argmaxOf]! < max - ARGMAX_TOLERANCE) {
-    reject('argmax-consistent', `答案 "${questionId}" 选中的候选不是分布众数`, questionId)
+    reject('argmax-consistent', `答案 "${questionId}" 选中的候选不是分布众数`, questionId, { optionCount })
   }
   return result
 }

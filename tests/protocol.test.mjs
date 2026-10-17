@@ -220,6 +220,56 @@ test('分布：键集合、概率取值范围、归一化、argmax 一致性', (
   assert.ok(ARGMAX_TOLERANCE < NORMALIZATION_TOLERANCE)
 })
 
+test('校验失败带结构化数值：optionCount / sum / tolerance（消费者据此确定性决定重采规模）', () => {
+  // 40 个候选、系统性欠归一（Σp = 0.95）—— 与 browser.action 实测的 6/6 拒绝同形。
+  // 消费者要据此算 `nextCap = max(4, floor(optionCount / 2))`，而不是从字符串里正则抠数字。
+  const options = {}
+  const probabilities = {}
+  for (let index = 0; index < 40; index += 1) {
+    options[`o${index}`] = `候选 ${index}`
+    probabilities[`o${index}`] = 0.95 / 40
+  }
+  const questions = { action: { kind: 'choice', prompt: '下一步做什么？', options } }
+  const payload = { model: MODEL, answers: { action: { type: 'choice', choice: 'o0', probabilities } } }
+
+  assert.throws(
+    () => decodeResponse(payload, questions, MODEL),
+    (error) => {
+      assert.ok(error instanceof ResponseRejected, '应为 ResponseRejected')
+      assert.equal(error.validation.rule, 'distribution-normalized')
+      assert.equal(error.validation.questionId, 'action')
+      assert.equal(error.validation.optionCount, 40, '候选规模要作为数字给出')
+      assert.ok(Math.abs(error.validation.sum - 0.95) < 1e-9, `sum 应为 0.95，实际 ${error.validation.sum}`)
+      assert.equal(error.validation.tolerance, NORMALIZATION_TOLERANCE, '容差必须运行期读取，不能写死在消费者里')
+      return true
+    },
+  )
+})
+
+test('distribution-complete 也带 optionCount；不知道 sum 就不要编一个', () => {
+  const options = {}
+  const probabilities = {}
+  for (let index = 0; index < 40; index += 1) {
+    options[`o${index}`] = `候选 ${index}`
+    if (index !== 7) probabilities[`o${index}`] = 0.025
+  }
+  const questions = { action: { kind: 'choice', prompt: '下一步做什么？', options } }
+  assert.throws(
+    () => decodeResponse(
+      { model: MODEL, answers: { action: { type: 'choice', choice: 'o0', probabilities } } },
+      questions,
+      MODEL,
+    ),
+    (error) => {
+      assert.equal(error.validation.rule, 'distribution-complete')
+      assert.equal(error.validation.optionCount, 40)
+      assert.equal(error.validation.sum, undefined, '这条规则不涉及求和，就不要填一个假数字')
+      assert.equal(error.validation.tolerance, undefined)
+      return true
+    },
+  )
+})
+
 test('模型快照：缺失即拒；与配置不一致即拒；`-latest` 别名允许解析到具体版本', () => {
   rejects({ answers: PROBE_3.answers }, Q, 'model-name', '响应没有 model')
   rejects({ model: 'someone-else', answers: PROBE_3.answers }, Q, 'model-name', '响应换了模型')

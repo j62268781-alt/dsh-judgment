@@ -6,6 +6,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { Context, Service } from '@deepseek-ai/cordis'
 import JudgmentService, { API_VERSION, JudgmentError } from '../lib/index.js'
@@ -308,11 +311,75 @@ test('响应未通过严格校验：invalid-response + validation 定位，并�
   )
 })
 
+test('校验失败的结构化数值穿过 Service：optionCount / sum / tolerance（消费者据此缩候选，不解析文案）', async () => {
+  const judge = await service()
+  const options = {}
+  const probabilities = {}
+  for (let index = 0; index < 40; index += 1) {
+    options[`o${index}`] = `候选 ${index}`
+    probabilities[`o${index}`] = 0.95 / 40
+  }
+  await withFetch(
+    () => json({
+      model: 'typesafe/jev-1.13',
+      answers: { pick: { type: 'choice', choice: 'o0', confidence: 0.9, probabilities } },
+    }),
+    async () => {
+      await assert.rejects(
+        () => judge.ask('s', { pick: { kind: 'choice', prompt: '下一步？', options } }, { purpose: 'browser.action' }),
+        (error) => {
+          assert.ok(error instanceof JudgmentError)
+          assert.equal(error.code, 'invalid-response')
+          assert.equal(error.validation.rule, 'distribution-normalized')
+          assert.equal(error.validation.questionId, 'pick')
+          assert.equal(error.validation.optionCount, 40, '候选规模要能直接用于决定重采规模')
+          assert.ok(Math.abs(error.validation.sum - 0.95) < 1e-9)
+          assert.equal(error.validation.tolerance, 0.02, '容差随失败一起给出，消费者不用写死')
+          return true
+        },
+      )
+    },
+  )
+})
+
+test('拒绝时把校验数值也记进账：校准能从 ledger 复算，不靠手记', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jdg-ledger-'))
+  const path = join(dir, 'ledger.jsonl')
+  try {
+    const judge = await service({ config: { ...CONFIG, ledger: { enabled: true, path } } })
+    const options = {}
+    const probabilities = {}
+    for (let index = 0; index < 40; index += 1) {
+      options[`o${index}`] = `候选 ${index}`
+      probabilities[`o${index}`] = 0.95 / 40
+    }
+    await withFetch(
+      () => json({
+        model: 'typesafe/jev-1.13',
+        answers: { pick: { type: 'choice', choice: 'o0', confidence: 0.9, probabilities } },
+      }),
+      async () => {
+        await assert.rejects(
+          () => judge.ask('s', { pick: { kind: 'choice', prompt: '下一步？', options } }, { purpose: 'browser.action' }),
+          (error) => error.code === 'invalid-response',
+        )
+      },
+    )
+    const lines = (await readFile(path, 'utf8')).trim().split('\n').map((line) => JSON.parse(line))
+    const settled = lines.find((line) => line.event === 'settled')
+    assert.equal(settled.errorCode, 'invalid-response')
+    assert.equal(settled.validationRule, 'distribution-normalized')
+    assert.equal(settled.validationOptionCount, 40, '账上要有候选规模')
+    assert.ok(Math.abs(settled.validationSum - 0.95) < 1e-9, '账上要有实测 Σp')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('响应不是 JSON：invalid-response', async () => {
   const judge = await service()
   await withFetch(
-    () => new Response('<html>502</html>', { status: 200 }),
-    async () => {
+    () => new Response('<html>502</html>', { status: 200 }),    async () => {
       await assert.rejects(
         () => judge.ask('s', NOUL, { purpose: 'browser.action' }),
         (error) => error instanceof JudgmentError && error.code === 'invalid-response',

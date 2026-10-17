@@ -316,6 +316,30 @@ export interface ValidationFailure {
   readonly questionId?: string
   /** 人类可读的细节。**不携带"修复后"的值**——失败不修复。 */
   readonly detail: string
+  /**
+   * 该答案涉及的候选/级别数量（能确定时）。
+   *
+   * 用途：消费者**确定性地**决定重采规模，而不是按固定阶梯猜——
+   * 例如 `nextCap = max(4, Math.floor(optionCount / 2))`。
+   *
+   * 实测背景（`browser.action` / decision-model-preview，每目标 6 次采样）：
+   * 候选 10 个时分布全部合法，16 个 0/6 非法，40 个 6/6 非法（系统性欠归一 0.95–0.98）。
+   * 所以"缩到多少"是消费者的领域决策，provider 只负责把事实说清楚。
+   */
+  readonly optionCount?: number
+  /**
+   * 实测分布和（仅 `distribution-normalized`）：`Σp`。
+   *
+   * 与 {@link tolerance} 一起就能判断"差多少"、以及是否系统性——而不是从
+   * `detail` 字符串里正则抠数字。
+   */
+  readonly sum?: number
+  /**
+   * 本次校验实际使用的容差（仅 `distribution-normalized`）。
+   * **运行期读取这个值，不要在消费者里写死**：容差是契约定稿，
+   * 但契约升版时它可能变，写死就会与 provider 漂移。
+   */
+  readonly tolerance?: number
 }
 
 /* ─────────────────────────── 调用选项：两层配置 / 预算 / 血缘 ─────────────────────────── */
