@@ -116,7 +116,7 @@ export class JudgmentService extends TypertRemoteService implements Judge {
    * 解析 用途/连接 → 连接层条目。
    *
    * **未知用途绝不静默换连接**（§13.3 第 4 项：降级必须显式可见）；
-   * 只有"一条连接都没指定、且恰好只配了一条"才自动选中，避免把配置错误掩盖成可用。
+   * 没指定连接时：`defaultConnection` 优先；为空则取**配置顺序的第一条**（用户不需要再指定一次）。
    */
   private resolve(target: JudgmentTarget = {}): ResolvedConnection {
     // volatile 字段每次调用现取——改配置不必重启（§13.4）。
@@ -171,16 +171,14 @@ export class JudgmentService extends TypertRemoteService implements Judge {
       return { id: defaultConnection, entry }
     }
 
+    // **默认连接 = 配置顺序的第一条**：用户不需要为了"能用"再单独指定一次。
+    // 显式配置 `defaultConnection` 仍然优先；这里只是把"空默认"从"报错"改成"取第一条"。
     const ids = Object.keys(connections)
-    if (ids.length === 1) {
-      const id = ids[0]!
-      return { id, entry: connections[id]! }
-    }
+    const first = ids[0]
+    if (first !== undefined) return { id: first, entry: connections[first]! }
     throw new JudgmentError({
       code: 'not-configured', phase: 'resolve', retryable: false,
-      message: ids.length === 0
-        ? '尚未配置任何连接'
-        : `配置了 ${ids.length} 条连接，请设置 defaultConnection 或调用时给出用途名`,
+      message: '尚未配置任何连接',
     })
   }
 
