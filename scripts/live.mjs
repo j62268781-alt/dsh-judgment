@@ -45,6 +45,11 @@ await ctx.plugin(JudgmentService, {
   } },
   purposes: { 'probe.action': { connection: 'live' } },
   defaultConnection: 'live',
+  // **绝不要写进用户的真实账本**：本脚本是开发/校准用的，默认路径是
+  // `~/.dsh/judgment-ledger.jsonl`，那是 app 的审计与配额计数所在。
+  // 写进去会污染审计（真机账本里曾出现 `live` 这个连接名），也让配额计数失真。
+  // 与 `scripts/verify-remote.mjs` 保持一致。
+  ledger: { enabled: false, path: '' },
 })
 
 const judge = ctx.get('judgment')
