@@ -157,6 +157,12 @@ dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
 
 ## 消费者怎么用
 
+**现在真正在用的消费方**：[`dsh-agent-browser`](../dsh-agent-browser/README.md) —— 它的「决策」开关
+就是这套接口的实战用法（`ctx.get('judgment')` + `apiVersion` + `status().purposes[].usable`
+门控 + 批量 `ask` + 把 `invalid-response` 当新采样）。接口清单与跨仓库约定见
+[`DESIGN.md`](DESIGN.md) §四「消费方」。它也 `import type { Judge } from 'dsh-judgment/contract'`，
+所以**契约一升版它就会编译报错**——那正是我们想要的强制点。
+
 ```ts
 import type { ApiVersion, Judge } from 'dsh-judgment/contract'
 

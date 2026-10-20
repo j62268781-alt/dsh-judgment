@@ -177,6 +177,13 @@ numbers get recycled, and otherwise the next connection would read a stale key.
 
 ## Consuming it
 
+**The one consumer actually in use today**: [`dsh-agent-browser`](../dsh-agent-browser/README.md) —
+its "decision" switch is a working example of this interface (`ctx.get('judgment')` + `apiVersion`
++ `status().purposes[].usable` gating + batched `ask` + treating `invalid-response` as a fresh
+sample). The surface list and the cross-repo agreements live in [`DESIGN.md`](DESIGN.md) §4
+"Consumers". That plugin also does `import type { Judge } from 'dsh-judgment/contract'`, so **a
+contract version bump breaks its build** — which is exactly the forcing function we want.
+
 ```ts
 import type { ApiVersion, Judge } from 'dsh-judgment/contract'
 

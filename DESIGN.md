@@ -114,7 +114,27 @@
 
 ---
 
-## 四、怎么验证上面这些说法
+## 四、消费方：谁在用 `ctx.judgment`、依赖哪些面
+
+| 消费方 | 用到的面 | 证据 |
+|---|---|---|
+| **`dsh-agent-browser`**（同机，`../dsh-agent-browser`） | `ctx.get('judgment')`（可选依赖）· `apiVersion` · `status().purposes[].usable`（开启前门控）· 批量 `ask`（一次 3 问）· `code === 'invalid-response'`（当**新采样**处理）· 结构化 `validation` 数值（据此决定缩多少候选） | `README.md:4,153,208`；`src/index.ts:21` **从 `dsh-judgment/contract` `import type { Judge }`**；`peerDependencies.dsh-judgment` + `peerDependenciesMeta.optional = true`；`src/config.ts` 的用途名默认 `browser.action`；跨会话交接文档 `docs/HANDOFF-to-dsh-judgment.md` 与本仓库的回执 `docs/REPLY-from-dsh-judgment.md` |
+| **`dsh-sidebar-mobile`**（同机，`../dsh-sidebar-mobile`） | — **暂无**：全仓库（不限扩展名）、已安装副本、`package.json` 描述、插件目录缓存里都**没有** `judgment` 引用 | `grep -rin judgment` 在仓库与 `~/.dsh/profiles/desktop/node_modules/dsh-sidebar-mobile` 都没有命中 |
+
+**从消费方的用法里学到的两条**（已回灌进契约文档/README）：
+
+1. **"服务在"不等于"能用"**。`dsh-agent-browser` 的 `judgmentAvailability()` 注释记录了真机教训：
+   dsh-judgment 装好了、`ctx.judgment` 也在，但 profile 里**没给用途配连接** —— 面板显示"已就绪"，
+   一开就失败。所以消费方必须同时检查 ① 服务在、② 目标用途 `usable`，缺一不可。
+2. **`invalid-response` 是"新采样"信号，不是"重试"信号**。消费方据此缩候选（24→16→8）再问一次，
+   provider 绝不自己重试 —— 这条边界被两个仓库同时遵守。
+
+> 现状：真正在用的消费方**只有一个**。这也是"本地配额只在多个消费者共用一把 key 时才值钱"这个
+> 判断的依据（见 §一.6）；等第二个消费方接进来，逐用途配额才开始有意义。
+
+---
+
+## 五、怎么验证上面这些说法
 
 ```bash
 pnpm test             # 101 项：协议固件 / Service 决策逻辑 / ledger / 配置 / 客户端渲染 / 打包纪律
