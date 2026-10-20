@@ -44,7 +44,7 @@
 |---|---|
 | `ctx.judgment` Service · 两层配置（连接 × 用途）· 配置页（增删改 + 密钥 + **自检按钮**） | ✅ 可用 |
 | `ask()` 批量判断 · `health()` 远端自检 | ✅ **已跑通**（SystemOne，真端点实测 500ms 量级） |
-| 两套协议：`system-one`（`noul`）· `openai-decisions`（`predicate`） | ✅ system-one 真网实测；openai-decisions 按上游实现写好、**尚未对着真端点验证** |
+| 两套协议：`system-one`（`noul`）· `openai-decisions`（`predicate`） | ✅ system-one 真网实测；openai-decisions 按**两份独立公开文档**逐条核对（并修掉 3 处错误假设），**仍无真机** |
 | 严格校验：答案集合一致 / 分布完整 / 归一化 0.02 / argmax 1e-6 / 模型名快照 | ✅ 已实现，**失败即拒不修复**（两套协议共用同一份容差） |
 | 校验失败的结构化定位（规则 + 候选数 + Σp + 容差）· 并记进 ledger | ✅ 已实现（消费者据此**确定性**决定缩多少候选重采） |
 | 审计 ledger（发包前落库）· 逐小时配额（连接层 / 用途层）· 计量 | ✅ 已实现；落盘失败**不阻断判断**（只记日志） |
@@ -100,6 +100,21 @@ dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
 换厂商、换模型、换密钥都只改配置，不动消费者一行代码。
 未知用途名**直接报错**，绝不静默换一条连接。
 多个用途可以共用一条连接；一个用途只能指向一条连接。
+
+**第二套协议 `openai-decisions` 长这样**（端点是 `/v1/decisions`，模型 `gpt-6-luna`；
+只按输入计费 $0.10 / 1M、输出免费，所以 `usage.outputTokens` 恒为 0 不必奇怪）：
+
+```yaml
+    connections:
+      openai-decisions:
+        protocol: openai-decisions          # 协议身份显式；不由 URL 推断
+        baseUrl: https://api.openai.com/v1/decisions
+        model: gpt-6-luna
+        credentialRef: JUDGMENT_API_KEY_2
+```
+
+**两套协议的 `score` 语义是同一个**：0 基级别的**概率加权均值**（可落在两级之间），
+所以消费者换协议不用改读数方式。
 
 ---
 
@@ -257,9 +272,12 @@ tests/                  服务 / 契约 / 客户端交接 / 纯逻辑 / 渲染
 
 ## 下一步（路线图）
 
-1. **`openai-decisions` 的真网校准**：协议已实现并有单测固件，但手上没有那条连接与密钥。
-   拿到一条真实连接后 `pnpm probe` 打一次，把三处待验证点回填（响应是否回显 `model`、
-   `score` 是级别下标还是像 SystemOne 那样的期望值、拒答的确切形状）。
+1. **`openai-decisions` 的真网校准**：协议已实现，并按**两份独立公开文档**逐条核对过
+   （promptfoo 的 `openai:decisions` provider 文档 + 一个真调两家 API 的对比项目），
+   本轮据此修掉三处错误假设（`score` 是 0 基级别的**概率加权均值**、`levels.label` 是级别名、
+   分布项的键字段与 `label` 都要宽容读）。**仍缺真机**——手上没有那条连接与密钥。
+   剩下只有三处要真机确认：分布项键名是 `value` 还是 `index`、非拒答答案是否带 `type`、
+   响应是否回显 `model`（代码对三者都取"宽容读取、语义照严"）。
 2. **配额可视化**：现在配额只在被拒时以 `quota-exceeded` 说话；契约的 `ConnectionStatus` /
    `PurposeStatus` 里还没有用量字段，所以页面看不到"本小时 12/60"。
 3. **工具面（`judgment/llm-face`，可选组件）**：3 个语义窄工具 + 1 份 skill，默认关，

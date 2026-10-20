@@ -49,7 +49,7 @@ the natural way to write it, and it costs an order and a half of magnitude more.
 |---|---|
 | `ctx.judgment` Service · two-layer config (connection × purpose) · config page (CRUD + key + **self-check button**) | ✅ works |
 | `ask()` batched judgment · `health()` remote self-check | ✅ **working** (SystemOne; measured against a real endpoint at ~500 ms) |
-| Two protocols: `system-one` (`noul`) · `openai-decisions` (`predicate`) | ✅ system-one verified live; openai-decisions implemented from the upstream reference but **not yet verified against a real endpoint** |
+| Two protocols: `system-one` (`noul`) · `openai-decisions` (`predicate`) | ✅ system-one verified live; openai-decisions cross-checked line by line against **two independent public sources** (3 wrong assumptions fixed), **still no live call** |
 | Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** (both protocols share one set of tolerances) |
 | Structured validation detail (rule + candidate count + Σp + tolerance) · also recorded in the ledger | ✅ implemented (consumers decide **deterministically** how far to shrink before re-sampling) |
 | Audit ledger (written before dispatch) · hourly quotas (per connection / per purpose) · metering | ✅ implemented; a failed ledger write **never blocks** a judgment (it logs) |
@@ -110,6 +110,22 @@ of judgment" from "which connection / model / key serves it". Your code says `br
 switching vendors, models, or keys is a config edit and touches no consumer code.
 An unknown purpose name is an **error** — it never silently falls back to another connection.
 Several purposes may share one connection; one purpose points at exactly one connection.
+
+**The second protocol, `openai-decisions`, looks like this** (endpoint `/v1/decisions`, model
+`gpt-6-luna`; input-only billing at $0.10 / 1M, output free — so `usage.outputTokens` is always 0):
+
+```yaml
+    connections:
+      openai-decisions:
+        protocol: openai-decisions          # protocol identity is explicit; never inferred from the URL
+        baseUrl: https://api.openai.com/v1/decisions
+        model: gpt-6-luna
+        credentialRef: JUDGMENT_API_KEY_2
+```
+
+**`score` means the same thing under both protocols**: the **probability-weighted mean** of
+zero-based level indices (it can fall between levels), so consumers never change how they read it
+when switching protocols.
 
 ---
 
@@ -285,10 +301,14 @@ everything" when trimming and "abort" when acting).
 
 ## Roadmap
 
-1. **Live calibration for `openai-decisions`** — the protocol is implemented with unit fixtures, but
-   there is no connection or key for it on hand. Once one exists, run `pnpm probe` and backfill the
-   three open questions (does the response echo `model`; is `score` a level index or an expected
-   value like SystemOne's; what exactly does a refusal look like).
+1. **Live calibration for `openai-decisions`** — the protocol is implemented and was cross-checked
+   line by line against **two independent public sources** (promptfoo's `openai:decisions` provider
+   docs and a comparison project that calls both APIs for real), which fixed three wrong assumptions
+   (`score` is the probability-weighted mean of zero-based levels; `levels.label` is the level name;
+   distribution key fields and `label` must be read leniently). There is still **no live call**.
+   Only three things remain to confirm on a real endpoint: whether the distribution key is `value`
+   or `index`, whether non-refusal answers carry `type`, and whether the response echoes `model`
+   (the code reads all three leniently while keeping the semantic checks strict).
 2. **Quota visibility** — quotas only speak when they reject (`quota-exceeded`); the contract's
    `ConnectionStatus` / `PurposeStatus` carry no usage field yet, so the page cannot show
    "12/60 this hour".
