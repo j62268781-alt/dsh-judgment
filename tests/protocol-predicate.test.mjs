@@ -1,10 +1,16 @@
 /**
  * OpenAI-Decisions（`predicate`）协议单元测试。
  *
- * ⚠️ 与 `protocol.test.mjs` 不同：**这里没有真实端点固件**——手上没有这条连接与密钥，
- * 所以固件是按上游可运行实现（`/tmp/jev-survey/dsh-jev-plugin/packages/jev/src/wire.ts`
- * 的 `protocolBody` / `parseProtocolResponse`）逐条写出来的。它钉住的是**形状与纪律**，
- * 不是"实测通过"。等有一条真实连接，用 `pnpm probe` 打一次再回填（文件末尾列了待验证点）。
+ * ⚠️ 与 `protocol.test.mjs` 不同：**这里没有真实端点固件**——手上没有这条连接与密钥。
+ * 固件来源按证据等级分两层：
+ * 1. 上游可运行实现（`/tmp/jev-survey/dsh-jev-plugin/packages/jev/src/wire.ts`）；
+ * 2. **两份独立公开来源**（2026-10-20 补）：promptfoo 的 `openai:decisions` provider 文档
+ *    （逐条列出请求/答案形状与约束）与一个真调两家 API 的对比项目
+ *    （`github.com/Neha/jev-vs-openai-decisions`，给出端点/模型/价格）。
+ *    据此**改掉了三个错误假设**：score 是 0 基级别的概率加权均值（不是"下标"）、
+ *    score 的 levels 里 `label` 是级别名（不是下标）、分布项的 `label` 与键字段都要宽容读。
+ *
+ * 它钉住的是**形状与纪律**，不是"实测通过"。等有一条真实连接，用 `pnpm probe` 打一次再回填。
  *
  * 重点：第二套协议的四处结构性差异（状态字段 / 问题容器 / 答案容器 / 分布表示）
  * 都能被同一套归一化 schema 吃掉 —— 这正是 P0′ 要回答的问题。
@@ -58,16 +64,18 @@ test('编码：choice → `choices[{value,description}]`，score → `levels[{la
   })
   assert.deepEqual(score, {
     name: 'certainty', type: 'score', instructions: '把握？',
-    levels: [{ label: '0', description: '小' }, { label: '1', description: '大' }],
+    // 文档：levels 是低→高的 `{label, description?}`，label 是**给人看的级别名**。
+    // 早先我们错把下标当 label、把级别名塞进 description —— 真机验证前必须修掉。
+    levels: [{ label: '小' }, { label: '大' }],
   })
 
-  // 空说明整字段不发，别送空串去污染判据。
+  // 空说明整字段不发，别送空串去污染判据；空级别名退回下标，避免 label 缺失。
   const sparse = encodeBody(MODEL, 's', {
     c: { kind: 'choice', prompt: 'p', options: { a0: null } },
     s: { kind: 'score', prompt: 'p', levels: [null, '有说明'] },
   }).questions
   assert.deepEqual(sparse[0].choices, [{ value: 'a0' }])
-  assert.deepEqual(sparse[1].levels, [{ label: '0' }, { label: '1', description: '有说明' }])
+  assert.deepEqual(sparse[1].levels, [{ label: '0' }, { label: '有说明' }])
 })
 
 /* ─────────────────────────── 解码 ─────────────────────────── */
@@ -75,13 +83,15 @@ test('编码：choice → `choices[{value,description}]`，score → `levels[{la
 const REPLY = {
   answers: [
     { name: 'reachable', type: 'predicate', probability: 0.9 },
+    // choice 的分布项**不带 label**（公开文档没承诺 choice 有 label），value 是候选值。
     { name: 'action', type: 'choice', choice: 'a1', confidence: 0.62, probabilities: [
-      { value: 'a0', probability: 0.31, label: 'A' },
-      { value: 'a1', probability: 0.69, label: 'B' },
+      { value: 'a0', probability: 0.31 },
+      { value: 'a1', probability: 0.69 },
     ] },
+    // score 的分布项用 `index` 作键（文档原话：每项包含级别的**下标与 label**）。
     { name: 'certainty', type: 'score', score: 0.8, confidence: 0.55, probabilities: [
-      { value: 0, probability: 0.2, label: '0' },
-      { value: 1, probability: 0.8, label: '1' },
+      { index: 0, label: '小', probability: 0.2 },
+      { index: 1, label: '大', probability: 0.8 },
     ] },
   ],
   usage: { input_tokens: 51, output_tokens: 0 },
@@ -98,8 +108,42 @@ test('解码：三种原语都归一化到同一套答案形状（数组分布 �
     kind: 'score', value: 0.8, confidence: 0.55,
     probabilities: { 0: 0.2, 1: 0.8 },
   })
+  // `score` = 级别下标（0 基）的概率加权均值 —— 与 SystemOne 同一语义，可落在两级之间。
+  const mean = 0 * 0.2 + 1 * 0.8
+  assert.equal(decoded.answers.certainty.value, 0.8)
+  assert.ok(Math.abs(decoded.answers.certainty.value - mean) < 1e-9, '必须等于 Σ i·p_i')
   assert.deepEqual(decoded.usage, { inputTokens: 51, outputTokens: 0 })
   assert.equal(decoded.model, MODEL, '协议没回显 model 时退回配置里的模型名')
+})
+
+test('分布项两种键字段都接受：`value`（choice）与 `index`（score）；label 可省', () => {
+  // 反过来再验一次：choice 用 index 不该被接受，score 用 value 应该被接受。
+  const scoreWithValue = decodeResponse({
+    ...REPLY,
+    answers: [
+      REPLY.answers[0],
+      { ...REPLY.answers[1], probabilities: [
+        { value: 'a0', probability: 0.31, label: 'A' },
+        { value: 'a1', probability: 0.69, label: 'B' },
+      ] },
+      { ...REPLY.answers[2], probabilities: [
+        { value: 0, probability: 0.2 },
+        { value: 1, probability: 0.8 },
+      ] },
+    ],
+  }, QUESTIONS, MODEL)
+  assert.deepEqual(scoreWithValue.answers.certainty.probabilities, { 0: 0.2, 1: 0.8 })
+  assert.deepEqual(scoreWithValue.answers.action.probabilities, { a0: 0.31, a1: 0.69 })
+})
+
+test('答案里 name 为 null 时按问题顺序对齐（协议保证顺序，不是猜）', () => {
+  const decoded = decodeResponse({
+    ...REPLY,
+    answers: REPLY.answers.map((answer) => ({ ...answer, name: null })),
+  }, QUESTIONS, MODEL)
+  assert.deepEqual(decoded.answers.reachable, { kind: 'noul', probability: 0.9 })
+  assert.equal(decoded.answers.action.optionId, 'a1')
+  assert.equal(decoded.answers.certainty.kind, 'score')
 })
 
 test('模型名：回显了就必须与配置一致（`-latest` 别名例外）', () => {
@@ -175,7 +219,7 @@ test('choice / score 的 confidence 必填（predicate 不要求）——与上�
   rejects({ answers: outOfRange }, 'answer-shape', 'confidence 越界')
 })
 
-test('数组分布的每一项都要合法：value 类型、label 必填、不得重复、必须覆盖全集', () => {
+test('数组分布的每一项都要合法：键类型、label 若给必须是字符串、不得重复、必须覆盖全集', () => {
   const withProbabilities = (index, probabilities) =>
     REPLY.answers.map((answer, i) => i === index ? { ...answer, probabilities } : answer)
 
@@ -183,8 +227,9 @@ test('数组分布的每一项都要合法：value 类型、label 必填、不�
     'distribution-complete', 'choice 的分布项 value 用了数字')
   rejects({ answers: withProbabilities(2, [{ value: '0', probability: 0.5, label: 'x' }, { value: 1, probability: 0.5, label: 'y' }]) },
     'distribution-complete', 'score 的分布项 value 用了字符串')
-  rejects({ answers: withProbabilities(1, [{ value: 'a0', probability: 0.5 }, { value: 'a1', probability: 0.5, label: 'y' }]) },
-    'distribution-complete', '分布项缺 label')
+  // label 是**可选**展示字段（choice 的分布项文档里没提 label），但给了就必须是字符串。
+  rejects({ answers: withProbabilities(1, [{ value: 'a0', probability: 0.5, label: 7 }, { value: 'a1', probability: 0.5 }]) },
+    'distribution-complete', '分布项 label 不是字符串')
   rejects({ answers: withProbabilities(1, [{ value: 'a0', probability: 0.5, label: 'x' }, { value: 'a0', probability: 0.5, label: 'y' }]) },
     'distribution-complete', '分布项重复')
   rejects({ answers: withProbabilities(1, [{ value: 'a0', probability: 1, label: 'x' }]) },
