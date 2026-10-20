@@ -52,12 +52,28 @@ the natural way to write it, and it costs an order and a half of magnitude more.
 | Two protocols: `system-one` (`noul`) · `openai-decisions` (`predicate`) | ✅ system-one verified live; openai-decisions cross-checked line by line against **two independent public sources** (3 wrong assumptions fixed), **still no live call** |
 | Strict validation: answer-set equality / distribution completeness / normalization 0.02 / argmax 1e-6 / model snapshot | ✅ implemented — **reject on failure, never repair** (both protocols share one set of tolerances) |
 | Structured validation detail (rule + candidate count + Σp + tolerance) · also recorded in the ledger | ✅ implemented (consumers decide **deterministically** how far to shrink before re-sampling) |
-| Audit ledger (written before dispatch) · hourly quotas (per connection / per purpose) · metering | ✅ implemented; a failed ledger write **never blocks** a judgment (it logs) |
+| Audit ledger (written before dispatch) · metering (tokens / latency / `request_id` / fingerprint) | ✅ implemented; a failed ledger write **never blocks** a judgment (it logs). **This is the reconciliation record**: the account dashboard only has aggregate bills, not "which request did this charge belong to" |
+| Local quotas (per connection / per purpose, optional guardrail) | ✅ implemented but **unlimited by default (`0`)**: a local guardrail, **not the account's quota** (see below) |
 | Tool face (`judgment/llm-face`, optional component) | ⏳ not implemented (off by default) |
 
 > ⚠️ **A plugin update needs a DSH restart**: the host half is a Node module, loaded once at process
 > start; the client half takes effect on page refresh. If the self-check reports `HTTP 404` /
 > `transport failure`, the host half is almost certainly still the old build.
+
+**Two honest notes on quotas** (which is why there is no usage visualization):
+
+1. **Local quota ≠ account quota.** Our counter covers **only calls this plugin makes**; the account
+   limit is everything using the same key combined. A page showing "12/60" while the account is at
+   90% would be **false comfort**. When the real limit hits, the server returns 429, which we already
+   map to a typed `rate-limited` (retryable).
+2. **Multiple instances sharing one ledger can under-count.** The ledger is a shared file, but the
+   hourly counter lives **in each process's memory**: seeded once from the file at startup, then only
+   incremented by that process's own requests. Two instances using the same connection name would each
+   think it only used its own share and could both let calls through. Local quotas are therefore only
+   accurate with "one instance, one writer".
+
+So the only thing local quotas are worth is: **when several consumers share one key, stop one of them
+(e.g. a broken loop) from burning the budget**.
 
 `score`'s semantics were **calibrated against the real endpoint**: it returns the **expected value**
 of the level distribution (a continuous position), not an integer index — 0.84 with 3 levels,
@@ -314,11 +330,15 @@ everything" when trimming and "abort" when acting).
    Only three things remain to confirm on a real endpoint: whether the distribution key is `value`
    or `index`, whether non-refusal answers carry `type`, and whether the response echoes `model`
    (the code reads all three leniently while keeping the semantic checks strict).
-2. **Quota visibility** — quotas only speak when they reject (`quota-exceeded`); the contract's
-   `ConnectionStatus` / `PurposeStatus` carry no usage field yet, so the page cannot show
-   "12/60 this hour".
-3. **Tool face (`judgment/llm-face`, optional component)** — three semantically narrow tools plus
+2. **Tool face (`judgment/llm-face`, optional component)** — three semantically narrow tools plus
    one skill, off by default, never exposing raw state/questions.
+
+**Removed from the roadmap**:
+
+- ~~Quota visibility~~ — see the two honest notes above: the real limit lives on the account/server
+  side and our counter only covers this plugin, so a usage widget would offer false comfort. When the
+  real limit hits, the server's 429 is already mapped to a typed `rate-limited`, which is a clear
+  enough signal.
 
 ---
 
