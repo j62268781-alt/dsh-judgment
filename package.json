@@ -92,6 +92,7 @@
     "url": "https://github.com/j62268781-alt/dsh-judgment/issues"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }
