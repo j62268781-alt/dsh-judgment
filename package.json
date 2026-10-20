@@ -33,7 +33,9 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "DESIGN.md"
   ],
   "dsh": {
     "bundle": {
@@ -59,7 +61,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.contract.json",
     "verify:contract": "node scripts/verify-contract.mjs",
     "verify:served": "node scripts/verify-served.mjs",
-    "verify:remote": "node scripts/verify-remote.mjs"
+    "verify:remote": "node scripts/verify-remote.mjs",
+    "prepack": "pnpm build"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4",
@@ -79,5 +82,16 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "^5.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/j62268781-alt/dsh-judgment.git"
+  },
+  "homepage": "https://github.com/j62268781-alt/dsh-judgment#readme",
+  "bugs": {
+    "url": "https://github.com/j62268781-alt/dsh-judgment/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
