@@ -13,7 +13,7 @@
  *   `openai-decisions`（`predicate`）协议、工具面。
  */
 
-import { type Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 // Remote：让设置页（客户端半）能调用本 Service 的方法。走 Gateway 的 **运行期 SRC fallback**
 // （按 `typertRemote` 绑定 + 装饰器 marker 现推 descriptor），所以**不需要** typert 代码生成。
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -110,6 +110,32 @@ export class JudgmentService extends TypertRemoteService implements Judge {
 
   constructor(ctx: Context, private readonly config: JudgmentConfig) {
     super(ctx, 'judgment')
+  }
+
+  /**
+   * 启动时**播种**一次"凭据是否已设值"的快照（只存在性，不读值）。
+   *
+   * 为什么需要：`status()` 同步零 I/O，只能读内存快照；而用户在页面上填密钥是
+   * **直接写凭据服务**的，本 Service 收不到通知。若只在 `ask()` / `health()` 里刷新，
+   * "刚配好、还没调用过"时 `credentialPresent` 会一直是 `false`——
+   * 真机复现过：一条**实际可用**的连接被显示成"未配置"，并连带把依赖它的
+   * 用途判成不可用（消费方据此拒绝开启功能，属于**假否定**）。
+   *
+   * 失败时**不写 false**：凭据服务暂时不可用时保持"未知"，别再制造一个假否定。
+   */
+  async [Service.init](): Promise<void> {
+    const refs = new Set<string>()
+    for (const entry of Object.values(this.config.connections.get())) {
+      if (entry.credentialRef !== '') refs.add(entry.credentialRef)
+    }
+    await Promise.all([...refs].map(async (ref) => {
+      try {
+        const described = await this.ctx.credentials.describe(credentialRef(ref))
+        this.credentialPresent.set(ref, described?.configured === true)
+      } catch {
+        // 凭据服务暂时不可用：保持未知（不写 false）。
+      }
+    }))
   }
 
   /**
@@ -261,8 +287,13 @@ export class JudgmentService extends TypertRemoteService implements Judge {
           },
         }
       }
-      const credentialPresent = target.credentialRef !== '' && this.credentialPresent.get(target.credentialRef) === true
-      const usable = target.baseUrl !== '' && credentialPresent
+      // `usable` 只回答一个**零 I/O 能确认**的问题：这个用途能不能解析到一条配置完整的连接。
+      //
+      // 刻意**不再**把 `credentialPresent` 算进去——那是内存快照，页面里填密钥不会通知本
+      // Service，拿它当判据会产生**假否定**（真机复现：一条实际可用的连接被判成不可用，
+      // 消费方据此拒绝开启功能）。凭据是否就绪由 `connections[].credentialPresent` 单独给出；
+      // 真的没有密钥时，`ask()` / `health()` 会返回类型化的 `not-configured`（降级照样显式可见）。
+      const usable = target.baseUrl !== ''
       return {
         purpose,
         connection: id,
@@ -271,9 +302,7 @@ export class JudgmentService extends TypertRemoteService implements Judge {
         ...(usable ? {} : {
           failure: {
             code: 'not-configured' as const, phase: 'resolve' as const, retryable: false,
-            message: target.baseUrl === ''
-              ? `连接 "${id}" 没有配置地址`
-              : `连接 "${id}" 的凭据尚未确认（status() 零 I/O，先跑一次 health() 或 ask()）`,
+            message: `连接 "${id}" 没有配置地址`,
           },
         }),
       }

@@ -570,6 +570,15 @@ export interface ConnectionStatus {
   /** 归一化后的 endpoint；不含凭据、query、hash。 */
   readonly baseUrl?: string
   readonly credentialRef?: string
+  /**
+   * 最近一次观察到的"凭据是否已设值"——**本地快照，不是实时值**。
+   *
+   * 播种于插件启动，之后由每次 `ask()` / `health()` 刷新。在页面里填密钥**不会**通知
+   * provider，所以刚配好时这里可能短暂为 `false`（真机踩过）。
+   *
+   * 因此它**不参与** {@link PurposeStatus.usable} 的判定：拿它做门控会产生假否定。
+   * 真正的凭据问题会在调用时以 `not-configured` 显式返回。
+   */
   readonly credentialPresent: boolean
   /** 最近一次 `health()` 探测**成功**过这条连接（本地记忆，不是实时探测）。 */
   readonly verified?: boolean
@@ -581,6 +590,14 @@ export interface ConnectionStatus {
 export interface PurposeStatus {
   readonly purpose: PurposeName
   readonly connection?: ConnectionId
+  /**
+   * 这个用途**零 I/O 可确认**的部分是否就绪：指向的连接存在，且地址非空。
+   *
+   * 刻意**不包含**"凭据已就绪"——那是本地快照（见
+   * {@link ConnectionStatus.credentialPresent}），掺进来会把可用配置判成不可用。
+   * 所以 `usable: true` 的准确含义是"这个用途能解析到一条配置完整的连接"，
+   * 而不是"这一次调用一定会成功"。
+   */
   readonly usable: boolean
   readonly failure?: JudgmentFailure
 }

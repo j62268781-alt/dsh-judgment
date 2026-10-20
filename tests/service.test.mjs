@@ -98,9 +98,13 @@ test('注册 ctx.judgment，并把「已配置」与「已验证」分开', asyn
   assert.equal(status.connections.length, 1)
   assert.equal(status.connections[0].verified, false)
   assert.equal(status.connections[0].verifiedAt, undefined)
-  // 契约要求：usable 为 false 时必须给出 failure（降级显式可见）。
-  assert.equal(status.purposes[0].usable, false)
-  assert.equal(status.purposes[0].failure.code, 'not-configured')
+  // `usable` 只反映"零 I/O 能确认"的部分：用途能解析到一条地址非空的连接。
+  // 刻意**不**把凭据快照算进去 —— 那会产生假否定（真机踩过：可用连接被判不可用，
+  // 消费方据此拒绝开启功能）。
+  assert.equal(status.purposes[0].usable, true)
+  assert.equal(status.purposes[0].failure, undefined)
+  // 启动时已播种过"凭据是否存在"，所以**未调用任何方法前**就该是 true。
+  assert.equal(status.connections[0].credentialPresent, true, 'Service.init 应播种凭据存在性')
   assert.equal(status.failure, undefined)
 })
 
@@ -221,6 +225,22 @@ test('凭据没有值：not-configured，且不发包', async () => {
       assert.equal(calls.length, 0)
     },
   )
+})
+
+test('凭据缺失不冒充"用途不可用"：usable 仍为 true，凭据事实由 credentialPresent 单独给出', async () => {
+  const judge = await service({ key: null })
+  const status = judge.status()
+  assert.equal(status.connections[0].credentialPresent, false, '启动播种：这个引用名确实没有值')
+  assert.equal(status.purposes[0].usable, true, 'usable 不掺凭据快照，否则可用配置会被判成不可用')
+  assert.equal(status.purposes[0].failure, undefined)
+})
+
+test('用途指向未配置的连接：usable=false 且给出 failure（降级显式可见）', async () => {
+  const judge = await service({ config: { ...CONFIG, purposes: { 'x.y': { connection: 'nope' } } } })
+  const status = judge.status()
+  assert.equal(status.purposes[0].usable, false)
+  assert.equal(status.purposes[0].failure.code, 'not-configured')
+  assert.match(status.purposes[0].failure.message, /nope/)
 })
 
 test('未实现的协议：internal（明确拒绝，不假装能用）', async () => {
