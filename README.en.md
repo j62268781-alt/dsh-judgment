@@ -86,12 +86,19 @@ rounds for you.
 ## Install
 
 ```bash
-# Local path (development; profile names live in ~/.dsh/profiles)
-dsh plugin --profile <profile> add /absolute/path/to/dsh-judgment
+# From npm (recommended; currently 0.1.0)
+dsh plugin --profile <profile> add dsh-judgment@0.1.0
 
 # Or from GitHub (the repo root carries cordis.patch.yml, so it installs as a plugin package)
 dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
+
+# Or a local path (development; profile names live in ~/.dsh/profiles)
+dsh plugin --profile <profile> add /absolute/path/to/dsh-judgment
 ```
+
+> **Restart DSH after installing** (the host half is a Node module, loaded only at process start).
+> Then configure connections under **Settings → 决策**; the self-check button lives in the card's
+> ⋯ menu.
 
 Then configure it under **Settings → 决策**. The plugin registers **zero tools** — it never puts
 anything in front of the model, it only registers a Service. (A tool face is a separate,

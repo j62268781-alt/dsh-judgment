@@ -74,12 +74,18 @@
 ## 安装
 
 ```bash
-# 本地路径（开发用；profile 名见 ~/.dsh/profiles）
-dsh plugin --profile <profile> add /绝对路径/dsh-judgment
+# 从 npm（推荐；当前 0.1.0）
+dsh plugin --profile <profile> add dsh-judgment@0.1.0
 
 # 或从 GitHub 装（仓库根带 cordis.patch.yml，可直接作为插件包安装）
 dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
+
+# 或本地路径（开发用；profile 名见 ~/.dsh/profiles）
+dsh plugin --profile <profile> add /绝对路径/dsh-judgment
 ```
+
+> 装完**需要重启 DSH**（host 半是 Node 侧模块，只在进程启动时加载）。
+> 重启后在 `设置 → 决策` 里配置连接；自检按钮在卡片右上角的 ⋯ 菜单里。
 
 装完在 **设置 → 决策** 里配置。本插件**零工具**：它不会往模型面前塞任何工具，
 只注册一个 Service（工具面是另一个可选组件，默认关）。
