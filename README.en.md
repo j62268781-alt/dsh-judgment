@@ -127,6 +127,11 @@ Several purposes may share one connection; one purpose points at exactly one con
 zero-based level indices (it can fall between levels), so consumers never change how they read it
 when switching protocols.
 
+> **Known unsupported subset**: the official `openai-decisions` API also accepts a message array as
+> `input` (inline base64 images, up to 128). This plugin's `state` is JSON and `input` is always sent
+> as a **string** — so **no image input**. Use the host model side for vision; this plugin does
+> text-only structured judgment.
+
 ---
 
 ## Where the key lives

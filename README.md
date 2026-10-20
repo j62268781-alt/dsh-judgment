@@ -116,6 +116,10 @@ dsh plugin --profile <profile> add github:j62268781-alt/dsh-judgment
 **两套协议的 `score` 语义是同一个**：0 基级别的**概率加权均值**（可落在两级之间），
 所以消费者换协议不用改读数方式。
 
+> **已知不支持的子集**：`openai-decisions` 官方允许 `input` 传消息数组（含 inline base64 图片，
+> 最多 128 张），而本插件的 `state` 是 JSON、`input` 只会以**字符串**发出 —— 所以**不支持图像输入**。
+> 需要视觉判断时请走主模型侧；这里只做纯文本的结构化判断。
+
 ---
 
 ## 密钥怎么给
