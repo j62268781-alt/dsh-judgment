@@ -76,9 +76,10 @@ So the only thing local quotas are worth is: **when several consumers share one 
 (e.g. a broken loop) from burning the budget**.
 
 `score`'s semantics were **calibrated against the real endpoint**: it returns the **expected value**
-of the level distribution (a continuous position), not an integer index — 0.84 with 3 levels,
-1.42 with 4, matching `Σ i·p_i` to the digit. So if you need a discrete level, take the mode of the
-distribution; the provider never rounds for you.
+of the level distribution (a continuous position), not an integer index — 0.84 with 3 levels
+(exactly `Σ i·p_i`), 1.42 with 4 (within **0.01** of `Σ i·p_i = 1.41`; the model reports two
+decimals). So if you need a discrete level, take the mode of the distribution; the provider never
+rounds for you.
 
 ---
 
@@ -288,6 +289,12 @@ it should be a **separate opt-in package**, not part of this plugin.
 ---
 
 ## Development
+
+📄 **[`DESIGN.md`](DESIGN.md)** — the **design-vs-implementation delta record**: which conclusions from
+the original research were overturned by measurement or engineering reality, why, and with what
+evidence (`score` semantics, credential naming, tool face, `HostModelJudge`, the Remote path, quota
+semantics, the `usable` false-negative bug, the peer-version compatibility incident, and the three
+corrections to the second protocol). **When it conflicts with the old research document, this file wins.**
 
 ```bash
 pnpm install
